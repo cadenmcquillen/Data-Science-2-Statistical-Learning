@@ -1,0 +1,133 @@
+---
+title: "Assignment 1"
+author: "Caden McQuillen"
+date: '2023-05-24'
+output: html_document
+---
+
+## a)
+```{r, warning=FALSE}
+set.seed(132421)
+
+#read in data and convert last column to factor 
+data <- read.csv("/Users/Caden/Downloads/breast-cancer-wisconsin.data", header = FALSE)
+data$V11 <- ifelse(data$V11 == 2, "benign", "malignant")
+data$V11 <- as.factor(data$V11)
+
+#store Ids and remove from df
+ids <- data$V1
+data <- data[,-1]
+#convert column 7 to numeric
+data$V7 <- as.numeric(data$V7)
+
+#since some columns of 7 have ?, then remove the rows with NAs
+na_rows <- is.na(data$V7)
+data <- data[!na_rows,]
+
+
+#split into train and test
+smp_size <- floor(0.50 * nrow(data))
+train_ind <- sample(seq_len(nrow(data)), size = smp_size)
+train <- data[train_ind, ]
+test <- data[-train_ind, ]
+```
+I converted 2 and 4 labels in column 11 into "benign" and "malignant" for readability. I then excluded the sample ID column. And converted column 7 (Bare Nuclei) into numeric. I also removed rows that had "?" in column 7 as this could not be converted to numeric. Lastly I randomly split the data into two equal sized test and train datasets. 
+
+
+
+
+## b)
+```{r}
+summary(logistic.train <- glm(V11 ~ ., data=train, family="binomial"))
+
+
+##Predict whether each individual will purchase caravan insurance in the test data. 
+test_pred_logistic_class <- predict(logistic.train, test, type="response")
+test_pred_logistic_class <- ifelse(test_pred_logistic_class >0.5, "malignant", "benign") #no yes
+test_pred_logistic_class <- as.factor(test_pred_logistic_class)
+
+
+##Get the misclassification rate:
+misclassifcations <- 0
+for(i in 1:length(test$V11)){
+  if(test$V11[i] != test_pred_logistic_class[i]){
+    misclassifcations <-misclassifcations + 1
+  }
+}
+cat("logistic regression prediction error is ", misclassifcations/length(test$V11))
+
+```
+I did logistic regression with Y as "Class" and used all other predictors execpt for sample ID. The prediction error was 0.02339181.
+
+
+## c)
+```{r}
+library('MASS')
+lda.train <- lda(V11~ ., data=train)
+test_pred_lda_class = predict(lda.train, test)$class
+
+##Get the misclassification rate:
+misclassifcations <- 0
+for(i in 1:length(test$V11)){
+  if(test$V11[i] != test_pred_lda_class[i]){
+    misclassifcations <-misclassifcations + 1
+  }
+}
+
+cat("LDA prediction error is ", misclassifcations/length(test$V11))
+```
+I did LDA with Y as "Class" and used all other predictors except for sample ID. The prediction error was 0.04093567.
+
+
+## d)
+```{r}
+library('MASS')
+qda.train <- qda(V11~ ., data=train)
+test_pred_qda_class = predict(qda.train, test)$class
+
+##Get the misclassification rate:
+misclassifcations <- 0
+for(i in 1:length(test$V11)){
+  if(test$V11[i] != test_pred_qda_class[i]){
+    misclassifcations <-misclassifcations + 1
+  }
+}
+cat("QDA prediction error is ", misclassifcations/length(test$V11))
+```
+I did QDA with Y as "Class" and used all other predictors except for sample ID. The prediction error was 0.02046784.
+
+
+## e)
+```{r}
+library('class')
+predicted_purchase=NULL
+error_rate=NULL
+counter = 1
+
+Y <- data$V11
+data <- data[,-10]
+data <- scale(data)
+train <- data[train_ind, ]
+test <- data[-train_ind, ]
+train_class <- Y[train_ind]
+test_class <-  Y[-train_ind]
+#train <- train[,-10]
+#test <- test[,-10]
+
+for(i in seq(1,10,1)){
+  predicted_class=knn(train, test, train_class, k=i)
+  error_rate[counter]=mean(test_class != predicted_class)
+  counter = counter + 1
+}
+
+knn_df <- data.frame(seq(1:10), error_rate)
+colnames(knn_df) <- c("K", "Error Rate")
+
+knn_df
+
+```
+I did KNN using Ks in the range 1-10 with the displayed prediction errors. 
+
+## e)
+
+Assume we have population of size n. Then $.05*n*.9$ = true positives, $.05*n*.1$  = false negatives, $.95*n*.9$ = true negatives, and $.95*n*.1$ = false positives. So the proportion of false positive out of all positives = $(.95*n*.1) / ( (.05*n*.9)+(.95*n*.1) )$ = .095/0.14 = 0.678 which is roughly 70%. 

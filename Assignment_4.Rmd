@@ -1,0 +1,243 @@
+---
+title: "Assignment4"
+author: "Caden McQuillen"
+date: '2023-07-02'
+output: html_document
+---
+## Libraries
+```{r, message=FALSE}
+library(tree)
+library(randomForest)
+library(gbm)
+```
+
+
+## Question 1
+
+## load data, clean, and split into train/test
+```{r}
+set.seed(1234)
+heart_data <- read.csv("/Users/Caden/Downloads/Heart.csv", row.names = 1)
+heart_data  <- na.omit(heart_data )
+heart_data$AHD <- ifelse(heart_data$AHD == "Yes", 1, 0)
+
+
+heart_data$ChestPain <- as.factor(heart_data$ChestPain)
+heart_data$Thal <- as.factor(heart_data$Thal)
+
+train_indice <- sample(c(TRUE,FALSE),nrow(heart_data),rep=TRUE)
+train <- heart_data[train_indice,]
+test <- heart_data[!train_indice,]
+
+```
+
+## Regression tree
+```{r}
+set.seed(1234)
+## create a large tree (Regression)
+bigTree <- tree(AHD ~ ., data = train)
+## CV to find optimal tree complexity, FUN = prune.tree for regression
+mytree.cv = cv.tree(bigTree,FUN=prune.tree,K=10)
+mytree.cv
+par(mar=c(4,2,2,1));plot(dev~size,data=as.data.frame(mytree.cv[1:3]),type="b")
+points(x=mytree.cv$size[which.min(mytree.cv$dev)],y=min(mytree.cv$dev),col="red",pch=19)
+```
+```{r}
+final.tree = prune.tree(bigTree ,best=mytree.cv$size[which.min(mytree.cv$dev)])
+plot(final.tree); text(final.tree,pretty=0,digits=3)
+```
+
+### AHD as factor for classifcation tree
+```{r}
+set.seed(1234)
+## load data, clean, and split into train/test
+heart_data <- read.csv("/Users/Caden/Downloads/Heart.csv", row.names = 1)
+heart_data  <- na.omit(heart_data )
+heart_data$AHD <-  as.factor(heart_data$AHD) #ifelse(heart_data$AHD == "Yes", 1, 0)
+
+
+heart_data$ChestPain <- as.factor(heart_data$ChestPain)
+heart_data$Thal <- as.factor(heart_data$Thal)
+
+train_indice <- sample(c(TRUE,FALSE),nrow(heart_data),rep=TRUE)
+train <- heart_data[train_indice,]
+test <- heart_data[!train_indice,]
+```
+
+
+
+### Classification tree
+```{r}
+set.seed(1234)
+## create a large tree (Classification)
+bigTree2 <- tree(AHD ~ ., data = train)
+## CV to find optimal tree complexity, FUN = prune.tree for regression
+mytree.cv2 = cv.tree(bigTree2,FUN=prune.misclass,K=10)
+mytree.cv2
+par(mar=c(4,2,2,1));plot(dev~size,data=as.data.frame(mytree.cv2[1:3]),type="b")
+points(x=mytree.cv2$size[which.min(mytree.cv2$dev)],y=min(mytree.cv2$dev),col="red",pch=19)
+```
+
+
+```{r}
+#Since size of 8 had a very similar error to size 12, I choose 8 for easier interpretation and less risk of over-fitting
+final.tree2 = prune.tree(bigTree2 ,best=8)
+plot(final.tree2); text(final.tree2,pretty=0,digits=3)
+```
+
+
+
+## Question 2
+```{r}
+bagged <- randomForest(AHD~.-AHD,data=heart_data,subset=train_indice,mtry=13,ntree=500,importance=TRUE)
+importance(bagged)
+varImpPlot(bagged,main = "Bagged tree")
+```
+
+
+```{r}
+RF <- randomForest(AHD~.-AHD,data=heart_data,subset=train_indice,mtry=4,ntree=500,importance=TRUE)
+importance(RF)
+varImpPlot(RF,main = "Random Forest")
+```
+
+
+## Question 3
+
+### Convert AHD back to 0/1
+```{r}
+set.seed(1234)
+heart_data <- read.csv("/Users/Caden/Downloads/Heart.csv", row.names = 1)
+heart_data  <- na.omit(heart_data )
+heart_data$AHD <- ifelse(heart_data$AHD == "Yes", 1, 0)
+
+
+heart_data$ChestPain <- as.factor(heart_data$ChestPain)
+heart_data$Thal <- as.factor(heart_data$Thal)
+
+train_indice <- sample(c(TRUE,FALSE),nrow(heart_data),rep=TRUE)
+train <- heart_data[train_indice,]
+test <- heart_data[!train_indice,]
+```
+
+### GBM depth 1
+```{r}
+set.seed(1234)
+gbm.1.lambda1.2000.cv <- gbm(AHD ~.-AHD ,data=train,distribution = "bernoulli",n.trees=2000,interaction.depth = 1,shrinkage=0.01, cv=10)
+gbm.perf(gbm.1.lambda1.2000.cv)
+
+gbm.1.lambda2.20000.cv <- gbm(AHD ~.-AHD ,data=train,distribution = "bernoulli",n.trees=20000,interaction.depth = 1,shrinkage=0.001, cv=10)
+ gbm.perf(gbm.1.lambda2.20000.cv)
+ 
+```
+
+### Rerun gbm depth 1 with CV parameters
+Because the error seemed similar between the two shrinkage parameters, I decided to go with the one with fewer trees to improve computation time. 
+```{r}
+ gbm.1.final <- gbm(AHD ~.-AHD ,data=train,distribution = "bernoulli",n.trees=940,interaction.depth = 1,shrinkage=0.01, cv=10, train.fraction = 0.5)
+```
+
+
+### GBM depth 2
+```{r}
+set.seed(1234)
+gbm.2.lambda1.2000.cv <- gbm(AHD ~.-AHD ,data=train,distribution = "bernoulli",n.trees=2000,interaction.depth = 2,shrinkage=0.01, cv=10)
+gbm.perf(gbm.2.lambda1.2000.cv)
+
+gbm.2.lambda2.20000.cv <- gbm(AHD ~.-AHD ,data=train,distribution = "bernoulli",n.trees=20000,interaction.depth = 2,shrinkage=0.001, cv=10)
+ gbm.perf(gbm.2.lambda2.20000.cv)
+```
+
+### Rerun gbm depth 2 with CV parameters
+
+Because the error seemed similar between the two shrinkage parameters, I decided to go with the one with fewer trees to improve computation time. 
+```{r}
+ gbm.2.final <- gbm(AHD ~.-AHD ,data=train,distribution = "bernoulli",n.trees=505,interaction.depth = 2,shrinkage=0.01, cv= 10, train.fraction = 0.5)
+```
+
+## Question 4
+
+### Depth 1 adaboost CV
+```{r}
+set.seed(1234)
+adaboost.1.lambda1.2000.cv <- gbm(AHD ~.-AHD ,data=train,distribution = "adaboost",n.trees=2000,interaction.depth = 1,shrinkage=0.01, cv=10)
+gbm.perf(adaboost.1.lambda1.2000.cv)
+
+adaboost.1.lambda2.20000.cv<- gbm(AHD ~.-AHD ,data=train,distribution = "adaboost",n.trees=20000,interaction.depth = 1,shrinkage=0.001, cv=10)
+ gbm.perf(adaboost.1.lambda2.20000.cv)
+```
+
+### Rerun adaboost depth 1 with CV parameters
+Again because the error seemed similar between the two shrinkage parameters, I decided to go with the one with fewer trees to improve computation time. 
+```{r}
+adaboost.1.final <- gbm(AHD ~.-AHD ,data=train,distribution = "adaboost",n.trees=723,interaction.depth = 1,shrinkage=0.01, cv=10, train.fraction = 0.5)
+```
+
+### Depth 2 adaboost CV
+```{r}
+set.seed(1234)
+adaboost.2.lambda1.2000.cv <- gbm(AHD ~.-AHD ,data=train,distribution = "adaboost",n.trees=2000,interaction.depth = 2,shrinkage=0.01, cv=10)
+gbm.perf(adaboost.2.lambda1.2000.cv)
+
+adaboost.2.lambda2.20000.cv<- gbm(AHD ~.-AHD ,data=train,distribution = "adaboost",n.trees=20000,interaction.depth = 2,shrinkage=0.001, cv=10)
+ gbm.perf(adaboost.2.lambda2.20000.cv)
+```
+
+### Rerun adaboost depth 2 with CV parameters
+Again because the error seemed similar between the two shrinkage parameters, I decided to go with the one with fewer trees to improve computation time. 
+```{r}
+adaboost.2.final <- gbm(AHD ~.-AHD ,data=train,distribution = "adaboost",n.trees=386,interaction.depth = 2,shrinkage=0.01, cv=10, train.fraction = 0.5)
+```
+
+
+## Question 5
+```{r}
+regress.pred <- predict(final.tree, newdata=test)
+regress.error <- mean((test$AHD - regress.pred)^2)
+
+class.pred <- predict(final.tree2, newdata=test)
+class.pred <- ifelse(class.pred[,1] > class.pred[,2], 0, 1)
+class.error <- mean( test$AHD != class.pred)
+
+RF.pred <- predict(RF, newdata=test)
+RF.pred <- ifelse(RF.pred== "Yes", 1, 0)
+RF.error <- mean(RF.pred != test$AHD)
+
+Bag.pred <- predict(bagged, newdata=test)
+Bag.pred <- ifelse(Bag.pred== "Yes", 1, 0)
+Bag.error <- mean(Bag.pred != test$AHD)
+
+gbm.1.pred <-  predict(gbm.1.final,newdata = test,n.trees = 940,type = "response") 
+gbm.1.pred <- ifelse(gbm.1.pred > 0.5, 1, 0)
+gbm.1.error <- mean(gbm.1.pred != test$AHD)
+
+gbm.2.pred <-  predict(gbm.2.final,newdata = test,n.trees = 505,type = "response") 
+gbm.2.pred <- ifelse(gbm.2.pred > 0.5, 1, 0)
+gbm.2.error <- mean(gbm.2.pred != test$AHD)
+
+ada.1.pred <-  predict(adaboost.1.final,newdata = test,n.trees = 723,type = "response") 
+ada.1.pred <- ifelse(ada.1.pred > 0.5, 1, 0)
+ada.1.error <- mean(ada.1.pred != test$AHD)
+
+ada.2.pred <-  predict(adaboost.2.final,newdata = test,n.trees = 386,type = "response") 
+ada.2.pred <- ifelse(ada.2.pred > 0.5, 1, 0)
+ada.2.error <- mean(ada.2.pred != test$AHD)
+
+error_df <- data.frame(c(regress.error,class.error, RF.error, Bag.error, gbm.1.error,gbm.2.error, ada.1.error, ada.2.error), c("MSE", rep("Misclassification Error", 7)), c(rep("NA",4),rep("Shrinkage=0.01", 4)), c(rep("NA",4),"ntrees = 940","ntrees = 505","ntrees = 723","ntrees = 386" ), c(rep("NA",4), "Depth = 1", "Depth = 2","Depth = 1", "Depth = 2")   )
+colnames(error_df) <- c("Error", "Error type", "Shrinkage", "Ntrees", "Depth")
+rownames(error_df) <- c("Regression tree", "Classification tree", "Random Forest", "Bagging", "GBM1", "GBM2", "Adaboost1", "Adaboost2")
+error_df
+```
+Based on the misclassification error using a test/train split, Adaboost with depth 1 had the lowest error. Then GBM with depth 1 and 2. All of the error rates were fairly similar but the boosting methods performed the best. 
+
+
+### Plot error vs number of trees
+```{r}
+plot(x=seq(1:500), y=RF$err.rate[,1], main = "Random Forest OOB Error")
+plot(x=seq(1:500), y=bagged$err.rate[,1], main = "Bagging OOB Error")
+gbm.perf(gbm.1.final,method = "test")
+gbm.perf(gbm.2.final,method = "test")
+gbm.perf(adaboost.1.final,method = "test")
+gbm.perf(adaboost.2.final,method = "test")
+```
+

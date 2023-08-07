@@ -1,0 +1,80 @@
+---
+title: "Lab1"
+author: "Caden McQuillen"
+date: '2023-05-09'
+output: html_document
+---
+
+## Task 1
+```{r}
+train_data <- data.frame( c(seq(1:6)), c(0,2, 0, 0, -1, 1), c(3,0, 1, 1, 0, 1), c(0,0, 3, 2, 1, 1), c("Red", "Red", "Red", "Green", "Green", "Red") )
+colnames(train_data) <- c("Obs", "X1", "X2", "X3", "Y")
+
+test_point <- c(0,0,0)
+
+distances <- vector(length = nrow(train_data))
+
+for (i in 1:nrow(train_data)){
+  
+  current_coords <- train_data[i, c(2,3,4)]
+  current_distance <- as.numeric(sqrt( (test_point[1] - current_coords[1])^2 + (test_point[2] - current_coords[2])^2 + (test_point[3] - current_coords[3])^2 ))
+  distances[i] <- current_distance
+}
+
+names(distances) <- train_data$Obs
+distances
+```
+
+
+## Task 2
+
+Our prediction for k = 1 would be Green since we take the point with the smallest distance from our test point which in this case is obs 5 and then classify our test point as whatever Y that is. 
+```{r}
+
+k <- 1
+distances_df <- data.frame(as.numeric(names(distances)), sort(distances))
+colnames(distances_df) <- c("Obs", "Distance")
+
+k1_prediction <- train_data[ distances_df[k,]$Obs,]$Y
+k1_prediction
+
+```
+
+
+## Task 3
+
+We take the 3 smallest distances from our test point and get their correpsonding Ys. Then we classify our test point as whatever Y has the highest occurance. 
+```{r}
+
+k <- 3
+distances_df <- data.frame(as.numeric(names(distances)), sort(distances))
+colnames(distances_df) <- c("Obs", "Distance")
+
+k3_predictions <- train_data[ distances_df[seq(1:k),]$Obs,]$Y
+max(k3_predictions)
+
+
+```
+
+## Task 4
+```{r}
+library(class)
+
+knn_prediction <- knn(train_data[,c(2,3,4)], test_point, train_data$Y, k = 3)
+knn_prediction
+```
+
+
+## Task 5
+If the true decision boundary is highly non-linear, then we would expect a lower K to be the best value. This is because we need more flexibility to reduce bias. Howver if we pick too small of a K, then we might increase variance too much. 
+
+## Task 6
+```{r}
+library(plotly)
+plot_df <- data.frame(rbind(train_data[,c(2,3,4)], test_point), c(train_data$Y, "Test") )
+colnames(plot_df)[4] <- "Y"
+
+fig <- plot_ly(plot_df, x = ~X1, y = ~X2, z = ~X3, color = ~Y, colors = c('green', 'red', "grey"))
+fig
+```
+

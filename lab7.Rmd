@@ -1,0 +1,66 @@
+---
+title: "Lab 7"
+author: "Caden McQuillen"
+date: '2023-06-27'
+output: html_document
+---
+
+## Libraries
+```{r}
+library(tree)
+```
+
+
+## Task 1
+```{r}
+heart_data <- read.csv("/Users/Caden/Downloads/Heart.csv", row.names = 1)
+heart_data$AHD <- ifelse(heart_data$AHD == "Yes", 1, 0)
+
+mytree = tree(AHD ~ ., data = heart_data, )
+summary(mytree)
+
+
+plot(mytree)
+text(mytree,pretty=0,digits = 3)
+```
+
+## Task 2
+```{r}
+new_data <- na.omit(heart_data)
+new_data$ChestPain <- as.factor(new_data$ChestPain)
+new_data$Thal <- as.factor(new_data$Thal)
+mytree_gini = tree(AHD ~ ., data = new_data, split = "gini")
+summary(mytree_gini)
+
+
+plot(mytree_gini)
+text(mytree_gini,pretty=0,digits = 3)
+```
+
+## Task 3
+```{r}
+set.seed(24543)
+train_indice <- sample(c(TRUE,FALSE),nrow(new_data),rep=TRUE)
+train <- new_data[train_indice,]
+test <- new_data[!train_indice,]
+mytree = tree(AHD ~ ., data = train)
+mytree.cv = cv.tree(mytree, K=10)
+par(mar=c(4,2,2,1));plot(dev~size,data=as.data.frame(mytree.cv[1:3]),type="b")
+points(x=mytree.cv$size[which.min(mytree.cv$dev)],y=min(mytree.cv$dev),col="red",pch=19)
+
+```
+
+## Task 4
+```{r}
+bigTree <- tree(AHD ~ ., data = train, )
+final.tree = prune.tree(bigTree ,best=mytree.cv$size[which.min(mytree.cv$dev)])
+plot(final.tree); text(final.tree,pretty=0,digits=3)
+
+finaltree.pred <- predict(final.tree, newdata=test)
+finaltree.pred <- ifelse(finaltree.pred >0.5, 1,0)
+
+error <- mean(finaltree.pred != test$AHD)
+error
+
+```
+

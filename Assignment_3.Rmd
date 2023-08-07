@@ -1,0 +1,180 @@
+---
+title: "Assignment 3"
+author: "Caden McQuillen"
+date: '2023-06-22'
+output: html_document
+---
+
+## Libraries
+```{r, message=FALSE}
+library(tidyverse)
+library(dplyr)
+library(bestglm)
+library(MASS)
+library(leaps)
+library(glmnet)
+library(gam)
+```
+
+
+## Question 1
+
+### a) 
+```{r}
+metadate_colnames <- c("age", "sex", "cp", "trestbps", "chol", "fbs", "restecg", "thalach", "exang", "oldpeak", "slope", "ca", "thal", "num")
+
+va_data <- read.csv("./heart+disease/processed.va.data", header= FALSE)
+colnames(va_data) <- metadate_colnames
+
+swiss_data <- read.csv("./heart+disease/processed.switzerland.data", header= FALSE)
+colnames(swiss_data) <- metadate_colnames
+
+hung_data <- read.csv("./heart+disease/processed.hungarian.data", header= FALSE)
+colnames(hung_data) <- metadate_colnames
+
+clev_data <- read.csv("./heart+disease/processed.cleveland.data", header= FALSE)
+colnames(clev_data) <- metadate_colnames
+
+combined_data <-  do.call("rbind", list(va_data, swiss_data, hung_data, clev_data)) 
+
+##Method 1
+combined_data[combined_data == "?"] <- NA
+combined_data1 <- na.omit(combined_data)
+cat("Method 1 Dimensions")
+dim(combined_data1)
+
+##Method 2
+combined_data2 <- combined_data[,-c(11,12,13)]
+combined_data2 <- na.omit(combined_data2)
+cat("Method 2 Dimensions")
+dim(combined_data2)
+
+## Convert outcome to binary outcome, convert character columns to numeric
+combined_data2$num <- ifelse(combined_data2$num > 0, 1, 0)
+combined_data2$trestbps <- as.numeric(combined_data2$trestbps)
+combined_data2$chol <- as.numeric(combined_data2$chol)
+combined_data2$fbs <- as.numeric(combined_data2$fbs)
+combined_data2$restecg <- as.numeric(combined_data2$restecg)
+combined_data2$thalach <- as.numeric(combined_data2$thalach)
+combined_data2$exang<- as.numeric(combined_data2$exang)
+combined_data2$oldpeak <- as.numeric(combined_data2$oldpeak)
+
+
+## Remove indivudal data sets for tidyness
+rm(clev_data)
+rm(combined_data1)
+rm(hung_data)
+rm(swiss_data)
+rm(va_data)
+```
+
+I first combined all the 4 processed data sets into one data frame. I then re coded "?" as NA. The first method for cleaning the combined data set was to just remove any row that contained an NA. However this removed to many rows and reduced the sample size too much. I noticed that 3 columns had the majority of their entries as NAs so I then tried removing those problematic columns first and then removing any row that contained an NA. I decided to go with that method since it preserved a larger sample size and the predictors that were mostly NAs probably would not be very informative anyways. The final dimensions were n = 740 and p = 11. 
+
+### c)
+
+#### Tune parameters and determine best model subsets
+```{r, warning=FALSE}
+
+## Split train/test
+set.seed(123)
+train_indice <- sample(c(TRUE,FALSE),nrow(combined_data2),rep=TRUE)
+train <- combined_data2[train_indice,]
+test <- combined_data2[!train_indice,]
+
+
+## Tune parameters using CV
+
+best_subset <- bestglm(Xy=train, IC="CV", family= binomial, method = "exhaustive")
+forward_model <- bestglm(Xy=train, IC="CV", family= binomial, method = "forward")
+elastic_lamda <- cv.glmnet(x=as.matrix(train[,-11]), y=train$num, alpha=0.5, family= "binomial")
+
+## Get models on whole training data set using lambda determine from CV
+best_elastic <- glmnet(x=as.matrix(train[,-11]), y=train$num, alpha=0.5, lambda = elastic_lamda$lambda.min, family= "binomial")
+```
+I first split my data into training and test splits. The training data will then be used to do cross validation to tune parameters or find the best model subset, after the model will be refit using those tuned parameters on the whole training data set. I choose to use CV error for the parameter tuning and best subset selection because it is a direct estimate of the test error. I also choose to use an $\alpha=0.5$ because its in the middle of RIDGE and LASSO. The resulting model will then be used to predict the testing split data to estimate generalization error which is a measure of test error.
+
+
+
+#### Estimate prediction error using test split
+```{r}
+forward.pred <- predict (forward_model$BestModel , test)
+forward.pred.class <- ifelse(forward.pred > 0.5, 1, 0)
+elastic.pred <- predict(best_elastic, as.matrix(test[,-11]), s=elastic_lamda$lambda.min)
+elastic.pred.class <- ifelse(elastic.pred > 0.5, 1, 0)
+bestSubset.pred <- predict(best_subset$BestModel, test)
+bestSubset.pred.class <- ifelse(bestSubset.pred > 0.5, 1, 0)
+
+cat("Forward Selection model error: \n")
+forward.error <- mean(test$num != forward.pred.class)
+forward.error
+cat("Best Subset Selection model error: \n")
+bestSubset.error <- mean(test$num != bestSubset.pred.class)
+bestSubset.error
+cat("Elastic Net model error: \n")
+elastic.error <- mean(test$num != elastic.pred.class)
+elastic.error
+```
+My best subset selection and forward selection models turned out to actually be identical, both had an error of 0.1983696. My elastic net model had the best error by a little bit which was 0.1929348. In general all the models were very close in terms of error rate. 
+
+#### Model coeffiencts 
+```{r}
+cat("Forward Selection model: \n")
+coef(forward_model$BestModel)
+cat("Best Subset Selection model: \n")
+coef(best_subset$BestModel)
+cat("Elastic Net model: \n")
+coef(best_elastic)
+
+```
+
+I would choose forward selection because its more computationally efficient than best subset selection and in this case produced the exact same model. Furthermore, all the error rates were very similar but forward selection model had less predictors than elastic net which helps for interpretation. Also the elastic net model had a few predictors with coefficients that were almost zero which means they likely aren't that important and make interpretation harder. One interesting thing is that the predictors choose in best subset and forward selection have similar coefficient values in elastic net model which might give more confidence that those are the most important predictors where as the other predictors in elastic net model have values close to 0.
+
+
+
+## Question 2
+
+### a)
+
+#### Load heart data
+```{r}
+heart_data <- read.csv("/Users/Caden/Downloads/Heart.csv", row.names = 1)
+heart_data$AHD <- ifelse(heart_data$AHD == "Yes", 1, 0)
+```
+
+#### GAM with smoothing spline
+```{r}
+
+smooth_spline <- smooth.spline(x= heart_data$Age, y = heart_data$AHD )
+cat("Best df: \n")
+smooth_spline$df
+gam.ss = gam(AHD~ s(Age, df=5.07), data = heart_data, family=binomial)
+```
+
+```{r}
+plot(gam.ss,se=TRUE)
+summary(gam.ss)
+```
+For the GAM model with smoothing spline we get more stable behavior at the tail ends than in polynomal logicstic regression. Since most of the data for age is within a range of 40-65 the tails of a polynomial logistic model could produce bad results. In terms of the summary function we can only see if the smoothing spline is statistically significant based on Anova but we don't get individual terms like we would in logistic regression model with 3rd degree polynomials. However, its hard to interpret those coefficients besides the linear term anyways so I don't think we lose that much interpretation. 
+
+### b)
+```{r}
+smooth_spline2 <- smooth.spline(x= heart_data$Chol, y = heart_data$AHD )
+cat("Best df: \n")
+smooth_spline2$df
+gam.ss2 = gam(AHD~ s(Chol, df=3.33), data = heart_data, family=binomial)
+```
+```{r}
+plot(gam.ss2,se=TRUE)
+summary(gam.ss2)
+```
+
+### c)
+```{r}
+gam.compare1 = gam(AHD~ s(Age, df=5.07), data = heart_data, family=binomial)
+gam.compare2 = gam(AHD~ s(Age, df=5.07)+ s(Chol, df=3.33) , data = heart_data, family=binomial)
+
+anova(gam.compare1,gam.compare2,test="Chisq")
+```
+
+There does not seem to be a statistically significant difference between the two models as the p value is 0.1309. That probably means that smoothing spline of cholesterol isn't very predictive of AHD. 
+

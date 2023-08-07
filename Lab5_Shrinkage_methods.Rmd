@@ -1,0 +1,138 @@
+---
+title: "Lab5_Shrinkage"
+author: "Caden McQuillen"
+date: '2023-06-09'
+output: html_document
+---
+
+## Intro
+```{r}
+library(ISLR)
+library(ggplot2)
+data(Hitters)
+attach(Hitters)
+Hitters=na.omit(Hitters)
+x=model.matrix(Salary~.,Hitters )[,-1] # First column corresponds to the intercept and is removed
+y=Hitters$Salary
+```
+
+```{r}
+require(glmnet)
+ridge.mod1 = glmnet(x,y,family = "gaussian",alpha = 0,lambda=0)
+coef(ridge.mod1)
+```
+
+```{r}
+coef(lm(y~x))
+ridge.mod2 = glmnet(x,y,family = "gaussian",alpha = 0,lambda=1e5)
+coef(ridge.mod2)
+sqrt(sum(coef(ridge.mod2)[-1]^2) )
+```
+
+## Task 1
+```{r}
+coef(lm(y~x))
+lasso.mod = glmnet(x,y,family = "gaussian",alpha = 1,lambda=1e5)
+coef(lasso.mod)
+```
+We can see that with this value of lambda every coefficient is zero. 
+
+## How does ridge compare to least squares regarding prediction error?
+```{r}
+set.seed(1)
+train=sample(1:nrow(x),nrow(x)/2)
+test=(-train )
+y.test=y[test]
+ridge.mod =glmnet(x[train,],y[train],alpha=0,lambda=4,thresh=1e-12)
+ridge.pred=predict(ridge.mod,newx=x[test,])
+mse.test = mean((ridge.pred-y.test)^2)
+mse.test
+lm.fit = lm( y[train] ~ x[train,])
+ls.pred = predict(lm.fit, newdata=as.data.frame(x[test,]))
+mean((ls.pred-y.test)^2)
+ridge.mod =glmnet(x[train,],y[train],alpha=0,lambda=1e10)
+ridge.pred=predict(ridge.mod,s=1e10,newx=x[test,])
+mean(( ridge.pred -y.test)^2)
+```
+
+## Task 2
+```{r}
+elasticNet.mod = glmnet(x,y,family = "gaussian",alpha = 0.5, lambda = seq(10^-2, 10^10,length.out=100))
+coef(elasticNet.mod)
+```
+There are 20 x 100 coefficients, 19 predictors + 1 intercept for each of the 100 values of lambda. 
+
+
+## Task 3
+```{r}
+plot(elasticNet.mod, xvar = "lambda")
+```
+
+## Task 4
+```{r}
+cv.elastic <- cv.glmnet(x,y,family = "gaussian",alpha = 0.5, nfolds = 10)
+plot(cv.elastic)
+cv.elastic$lambda.min
+cv.elastic$lambda.1se
+```
+Lamdba min is the lambda with the smallest mean CV error and lambda 1se is the lambda that is 1 standard error away from the minimum. 
+
+## Task 5
+```{r}
+elastic <- glmnet(x,y,family = "gaussian",alpha = 0.5, lambda = cv.elastic$lambda.min)
+coef(elastic)
+```
+
+## Determining alpha
+```{r}
+foldid=sample(1:10,size=length(y),replace=TRUE)
+grid =10^seq(10,-2,length =100)
+cv1=cv.glmnet(x,y,lambda=grid,foldid=foldid,alpha=1)
+cv.5=cv.glmnet(x,y,lambda=grid,foldid=foldid,alpha=.5)
+cv0=cv.glmnet(x,y,lambda=grid,foldid=foldid,alpha=0)
+plot(cv1,main="LASSO");plot(cv0,main="Ridge");plot(cv.5,main="Elastic Net alpha=0.5")
+```
+
+## Task 6
+```{r}
+plotdf <- data.frame(c(cv0$cvm, cv.5$cvm, cv1$cvm), c(cv0$lambda, cv.5$lambda, cv1$lambda),c(rep("Ridge", length(cv0$cvm)), rep("Elastic", length(cv0$cvm)), rep("Lasso", length(cv0$cvm)) ))
+colnames(plotdf) <- c("CV_error", "Lambda", "Method")
+
+ggplot(data = plotdf, aes(x = log(Lambda), y = CV_error, colour = Method)) + geom_point()
+
+```
+
+## Task 7
+```{r}
+#read in data and convert last column to factor 
+data <- read.csv("/Users/Caden/Downloads/breast-cancer-wisconsin.data", header = FALSE)
+data$V11 <- ifelse(data$V11 == 2, "benign", "malignant")
+data$V11 <- as.factor(data$V11)
+
+#store Ids and remove from df
+ids <- data$V1
+data <- data[,-1]
+#convert column 7 to numeric
+data$V7 <- as.numeric(data$V7)
+
+#since some columns of 7 have ?, then remove the rows with NAs
+na_rows <- is.na(data$V7)
+data <- data[!na_rows,]
+
+x=model.matrix(V11~.,data )[,-1] # First column corresponds to the intercept and is removed
+y=data$V11
+
+foldid=sample(1:10,size=length(y),replace=TRUE)
+grid =10^seq(10,-2,length =100)
+cv1=cv.glmnet(x,y,lambda=grid,foldid=foldid,alpha=1, family = "binomial")
+cv.5=cv.glmnet(x,y,lambda=grid,foldid=foldid,alpha=.5, family = "binomial")
+cv0=cv.glmnet(x,y,lambda=grid,foldid=foldid,alpha=0, family = "binomial")
+
+
+plotdf <- data.frame(c(cv0$cvm, cv.5$cvm, cv1$cvm), c(cv0$lambda, cv.5$lambda, cv1$lambda),c(rep("Ridge", length(cv0$cvm)), rep("Elastic", length(cv0$cvm)), rep("Lasso", length(cv0$cvm)) ))
+colnames(plotdf) <- c("CV_error", "Lambda", "Method")
+
+ggplot(data = plotdf, aes(x = log(Lambda), y = CV_error, colour = Method)) + geom_point()
+
+```
+

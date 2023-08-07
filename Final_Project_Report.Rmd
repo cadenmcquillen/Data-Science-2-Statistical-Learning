@@ -1,0 +1,59 @@
+---
+title: "Final_Project_Report"
+author: "Caden McQuillen"
+date: '2023-08-01'
+output: html_document
+---
+
+## Introduction
+
+A subset of COVID patients suffer from acute respiratory distress and have difficulties breathing. These patients then require artificial respiratory support via invasive mechanical ventilator. Given the surge of COVID there were concerns that there might be a shortage in availability of mechanical ventilators. Therefore we wanted to try and to predict the need for intubation for each patient using measurement data commonly available to hospitals. The goal is to accurately predict if a patient will be at high risk for intubation based on underlying measurements alone. To accomplish this I will use various statistical learning methods trained on data from COVID patients that did and did not need intutabion to predict which patients will be at higher risk of intubation. 
+
+
+## Methods
+
+### Longitudional Features and data cleaning
+
+I first read in both data sets and removed rows that contained NAs. To create one measure per patient for each of the vitals, I took the mean, standard deviation, skewness, and kurtosis of all of a given patients measurements for each of the vitals. The resulting features are mean (and sd, skewness, kurtosis) values for a given vital for each of the patients. I then looked at the variance of each of these new features to see which new features had the highest variance. The idea being the ones with the highest variance might be the most informative for predicting intubation. I decided to included all of the new features (4 for each vital) for the downstream models because I planned to regularization and wanted to start with as many features as possible and then work down to the most important ones. 
+
+### Train/Test split
+
+I split the combined data set (baseline + longitudinal features) into a 50/50 test train split by randomly selecting half of the row indices to be chosen for the training data set and the rest to be for the test data set. I then used test data set to measure generalization error for all methods performed. Lastly, the "event" outcome was coded as "No" = 0, "Yes" = 1.
+
+### LASSO
+
+I performed LASSO logistic regression using the cv.glmnet function from glmnet package. I converted categorical predictors into factors and then converted to dummy variables using model matrix function. I then scaled all the predictors so that the coefficients would be comparable. I then did cross validation using cv.glmnet function with alpha = 1 (LASSO) to determine the best value of lambda which was 0.01099097. I then used that value of lambda to refit the model on the entire training data set and then tested that model on the test data set using misclassification rate in the test data set to measure generalization error.
+
+
+### LDA and QDA
+
+I performed LDA and QDA using the lda and qda functions from the MASS package. I used the training data set with all predictors to fit the models and the used the test data set to measure generalization error.
+
+### Linear and Radial SVM
+
+I performed radial and linear SVM using the svm function from the e1071 package. I used the training data set with all predictors to fit the models. I did cross validation to determine the best value of gamma and cost parameters, testing gamma = 10^-1, 10^-2, 10^-3 and cost = 0.001 , 0.01, 0.1, 1,5,10,100 for both radial and linear svm. I then used the best model (lowest CV error) for both radial and linear and used the test data set to measure generalization error. The best gamma was 0.1 and the best cost was 0.01 for linear SVM. For radial SVM the best gamma was 0.01 and cost was 5.
+
+## Results
+
+### Feature Engineering
+
+![*Figure 1*](/Users/Caden/Desktop/DS2/vital_features_var.png)
+
+I sorted the variance of the new vital features that I created. We can see that unsurprisingly the mean of vitals have the most variance amongst patients compared to higher moments. The order within each moment type does shift, we can see that systolic blood
+pressure (d) has the highest rank within the means, but xp respiration spo2 has the highest rank for kurtosis. Overall it seems like systolic blood pressure (d) tends to be the most or close to the highest variable among all moments possibly suggesting it could be an informative predictor of intubation.
+
+
+### Error Rate Comparison
+
+![*Figure 2*](/Users/Caden/Desktop/DS2/error_comparison.png)
+I compared the misclassification rate using the test data set for all the methods. The method with the lowest error was radial SVM with an error rate of 0.1797920, then linear SVM 0.1812779, then LASSO 0.1842496, then LDA 0.1857355, and lastly QDA at 0.3031204. Since all the error rates were pretty similar, I choose to use LASSO for the final model since it was interpretable coefficients and can be converted to a probability. It also regularizes the predictors so only the most important ones are left which is important since there are so many predictors. 
+
+### Final model: LASSO logistic regression
+
+![*Figure 3*](/Users/Caden/Desktop/DS2/LASSO_betas.png)
+
+![*Figure 4*](/Users/Caden/Desktop/DS2/LASSO_odds_ratio.png)
+
+For my final model I selected LASSO logistic regression with lambda = 0.01099097. We can see from figure 3 that the most predictive features are age, bmi, and  vs_hr_hr_mean. Mean blood pressure and duration of symptoms were also very predictive of intubation. Since LASSO penalizes excess predictors in the model, many of the original 45 predictors were shrunk to zero meaning that they did not have much of an effect on predicting intubation. Since this is a logistic regression model we can also interpret the beta values using the log odds ratio in figure 4. We can see that the predictors with a positive beta value and consequently an odds ratio greater than 1 have an increased probability of being intubated and vice versa for odds ratios less than 1. 
+
+

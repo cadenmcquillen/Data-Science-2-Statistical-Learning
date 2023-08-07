@@ -1,0 +1,125 @@
+---
+title: "Assignment 5"
+author: "Caden McQuillen"
+date: '2023-07-17'
+output: html_document
+---
+
+## Libraries
+```{r, message=FALSE}
+library(class)
+library(tidyverse)
+library(MASS)
+library(ggplot2)
+library(e1071)
+library(pROC)
+```
+
+
+## Question 1
+
+### load data, clean, and split into train/test
+```{r}
+set.seed(23453)
+heart_data <- read.csv("/Users/Caden/Downloads/Heart.csv", row.names = 1)
+heart_data  <- na.omit(heart_data )
+heart_data$AHD <- as.factor(heart_data$AHD)#ifelse(heart_data$AHD == "Yes", 1, 0)
+
+
+heart_data$ChestPain <- as.factor(heart_data$ChestPain)
+heart_data$Thal <- as.factor(heart_data$Thal)
+
+train_indice <- sample(x= nrow(heart_data),rep=FALSE, size = 207)
+train <- heart_data[train_indice,]
+test <- heart_data[-train_indice,]
+
+```
+
+## Question 2
+```{r}
+set.seed(23453)
+lda.model <- lda(AHD ~ ., data=train)
+lda.pred = predict(lda.model, train)$class
+cat("LDA classification error: \n")
+mean(train$AHD != lda.pred)
+    
+svm.model <- svm(AHD~., train, kernel= "linear", cost= 0.01, gamma=2)
+svm.pred <- predict(svm.model, train)
+cat("SVM classification error: \n")
+mean(train$AHD != svm.pred)
+```
+
+```{r}
+roc_lda <- roc(response = as.numeric(train$AHD), predictor = as.numeric(lda.pred))
+roc_svm <- roc(response = as.numeric(train$AHD), predictor = as.numeric(svm.pred))
+plot(roc_lda,col = "blue")
+lines(roc_svm, col= "red")
+legend(0.3, 0.2, legend = c("train-lda", "train-svm"), lty = c(1), col = c("blue", "red"))
+```
+
+The performance of SVM and LDA in this case are very similar with LDA performing slightly better in both ROC and misclassification error rate. Since this is linear SVM, this makes sense since it is very similar to LDA. 
+
+## Question 3
+```{r}
+set.seed(23453)
+gamma1.tune.out=tune(svm,AHD ~ ., data=train, kernel="radial", ranges =list(gamma=c(10^-1), cost=c(0.001 , 0.01, 0.1, 1,5,10,100) ) )
+gamma2.tune.out=tune(svm,AHD ~ ., data=train, kernel="radial", ranges =list(gamma=c(10^-2), cost=c(0.001 , 0.01, 0.1, 1,5,10,100) ) )
+gamma3.tune.out=tune(svm,AHD ~ ., data=train, kernel="radial", ranges =list(gamma=c(10^-3), cost=c(0.001 , 0.01, 0.1, 1,5,10,100) ) )
+```
+
+```{r}
+summary(gamma1.tune.out)
+summary(gamma2.tune.out)
+summary(gamma3.tune.out)
+```
+
+```{r}
+gamma1.pred=predict(gamma1.tune.out$best.model,train)
+gamma2.pred=predict(gamma2.tune.out$best.model,train)
+gamma3.pred=predict(gamma3.tune.out$best.model,train)
+```
+
+```{r}
+roc_gamma1 <- roc(response = as.numeric(train$AHD), predictor = as.numeric(gamma1.pred))
+roc_gamma2<- roc(response = as.numeric(train$AHD), predictor = as.numeric(gamma2.pred))
+roc_gamma3<- roc(response = as.numeric(train$AHD), predictor = as.numeric(gamma3.pred))
+plot(roc_gamma1,col = "blue")
+lines(roc_gamma2, col= "red")
+lines(roc_gamma3, col= "green")
+legend(0.3, 0.2, legend = c("train-gamma = 0.1", "train-gamma = 0.01", "train-gamma = 0.001"), lty = c(1), col = c("blue", "red", "green"))
+```
+
+We can see based on the training data, gamma = 10^-1 performs the best according to ROC. Both gamma = 10^-2 and gamma = 10^-3 perform pretty similarly. 
+
+
+## Question 4
+```{r}
+
+lda.pred.test = predict(lda.model, test)$class
+
+svm.pred.test <- predict(svm.model, test)
+gamma1.pred.test=predict(gamma1.tune.out$best.model,test)
+gamma2.pred.test=predict(gamma2.tune.out$best.model,test)
+gamma3.pred.test=predict(gamma3.tune.out$best.model,test)
+
+
+roc1 <- roc(response = as.numeric(test$AHD), predictor = as.numeric(lda.pred.test))
+roc2<- roc(response = as.numeric(test$AHD), predictor = as.numeric(svm.pred.test))
+roc3<- roc(response = as.numeric(test$AHD), predictor = as.numeric(gamma1.pred.test))
+roc4<- roc(response = as.numeric(test$AHD), predictor = as.numeric(gamma2.pred.test))
+roc5<- roc(response = as.numeric(test$AHD), predictor = as.numeric(gamma3.pred.test))
+plot(roc1,col = "blue")
+lines(roc2, col= "red")
+lines(roc3, col= "green")
+lines(roc4, col= "purple")
+lines(roc5, col= "orange")
+legend(0.2, 0.5, legend = c("test-lda", "test-svm-linear", "test-gamma = 0.1", "test-gamma = 0.01", "test-gamma = 0.001"), lty = c(1), col = c("blue", "red", "green", "purple", "orange"))
+
+
+#plot curves that get obstructed in combined plot
+plot(roc2,col = "red")
+plot(roc4,col = "purple")
+
+```
+
+Based on the test data and ROC, lda performs the best but the performance is very similar for all methods used. Linear svm, radial svm with gamma = 0.01 and gamma = 0.001 have almost identical performance. 

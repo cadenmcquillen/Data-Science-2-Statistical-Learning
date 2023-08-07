@@ -1,0 +1,131 @@
+---
+title: "Lab 6"
+author: "Caden McQuillen"
+date: '2023-06-20'
+output: html_document
+---
+
+## Libraries
+```{r}
+library(splines)
+library(gam)
+```
+
+## Task 1
+```{r}
+SA_data <- read.csv("./SAheart.data", header = TRUE, row.names = 1)
+length(subset(SA_data, chd == 1)[,1])
+length(subset(SA_data, chd == 0)[,1])
+```
+
+## Task 2
+```{r}
+poly1 <- poly(x = SA_data$age, df=4, raw = FALSE)
+poly2 <- poly(x = SA_data$age, df=4, raw = TRUE)
+
+```
+
+## Task 3
+```{r}
+poly3 <- poly(x = I(SA_data$age), df=4)
+identical(poly1, poly3)
+```
+
+## Task 4
+
+### a)
+```{r}
+age_grid <- (seq(min(SA_data$age), max(SA_data$age, 1)))
+age_grid
+```
+
+### b)
+```{r}
+poly.fit <- lm(chd~poly(age, df=4, raw = FALSE), SA_data)
+poly.pred <- predict(poly.fit, newdata = list(age=age_grid), se=TRUE)
+
+poly.pred$fit
+poly.pred$se
+```
+
+### c)
+```{r}
+
+se.pos <- poly.pred$fit + 2*poly.pred$se.fit
+se.neg <- poly.pred$fit - 2*poly.pred$se.fit
+
+exp(se.pos)
+exp(se.neg)
+```
+
+### d)
+```{r}
+
+
+poly.fit2 <- lm(chd~poly(age, df=4, raw = FALSE), SA_data)
+poly.pred2 <- predict(poly.fit2, newdata = list(age=age_grid), se=TRUE, type= "response")
+
+
+
+se.pos2 <- poly.pred2$fit + 2*poly.pred2$se.fit
+se.neg2 <- poly.pred2$fit - 2*poly.pred2$se.fit
+
+exp(se.pos2)
+exp(se.neg2)
+```
+
+## Task 5
+```{r}
+plot(y = poly.pred$fit, x = age_grid)
+lines(x = age_grid, y = se.pos, col= "red")
+lines(x = age_grid, y = se.neg, col= "red")
+```
+
+## Task 6
+```{r}
+poly.fit1 <- lm(chd~poly(age, df=1, raw = FALSE), SA_data)
+poly.pred1 <- predict(poly.fit1, newdata = list(age=age_grid), se=TRUE)
+
+poly.fit2 <- lm(chd~poly(age, df=2, raw = FALSE), SA_data)
+poly.pred2 <- predict(poly.fit2, newdata = list(age=age_grid), se=TRUE)
+
+poly.fit3 <- lm(chd~poly(age, df=3, raw = FALSE), SA_data)
+poly.pred3 <- predict(poly.fit3, newdata = list(age=age_grid), se=TRUE)
+
+poly.fit4 <- lm(chd~poly(age, df=4, raw = FALSE), SA_data)
+poly.pred4 <- predict(poly.fit4, newdata = list(age=age_grid), se=TRUE)
+
+poly.fit5 <- lm(chd~poly(age, df=5, raw = FALSE), SA_data)
+poly.pred5 <- predict(poly.fit5, newdata = list(age=age_grid), se=TRUE)
+
+
+anova(poly.fit1, poly.fit2,poly.fit3,poly.fit4,poly.fit5, test="LRT")
+
+
+```
+I would choose df= 2 since all the RSSs are pretty much the same. 
+## Task 7
+```{r}
+SA_data$age_cut <- cut(SA_data$age, c(30,50, 60))
+piece1 <- lm(chd~1, subset(SA_data, age_cut == "(30,50]"))
+piece2 <- lm(chd~1, subset(SA_data, age_cut == "(50,60]"))
+
+piece1
+piece2
+```
+
+
+## Task 8
+```{r}
+bs.fit <- lm(chd~bs(age,df=6), SA_data)
+bs.pred <- predict(bs.fit, list(age=age_grid))
+plot(y= bs.pred, x = age_grid)
+```
+## Task 9
+```{r}
+ns.fit <- lm(chd~ns(age,df=4), SA_data)
+ns.pred <- predict(ns.fit, list(age=age_grid))
+plot(y= ns.pred, x = age_grid)
+
+```
+Since its a natural spline the edges are linear and thus df = 4.

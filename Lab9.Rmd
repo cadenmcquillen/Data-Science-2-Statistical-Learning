@@ -1,0 +1,76 @@
+---
+title: "Lab8"
+author: "Caden McQuillen"
+date: '2023-07-13'
+output: html_document
+---
+
+## Libraries
+```{r}
+library(ISLR)
+library(e1071)
+```
+
+## Task 1
+```{r}
+Khan_data <- Khan
+train <- as.data.frame(cbind(Khan_data$ytrain,Khan_data$xtrain))
+colnames(train) <- c("y", seq(1:ncol(Khan_data$xtrain)))
+train$y <- as.factor(train$y)
+
+test <- as.data.frame(cbind(Khan_data$ytest,Khan_data$xtest))
+colnames(test) <- c("y", seq(1:ncol(Khan_data$xtest)))
+test$y <- as.factor(test$y)
+
+dim(train)
+dim(test)
+
+```
+
+## Task 2
+```{r}
+svm.model <- svm(y~., train, kernel= "linear", cost= 10)
+summary(svm.model)
+```
+
+## Task 3
+```{r}
+ CV_tuning <- tune(svm, y~., data = train, 
+              ranges  = list(cost = c(0.001 , 0.01, 0.1, 1,5,10,100))
+             )
+```
+```{r}
+summary(CV_tuning)
+plot(CV_tuning)
+```
+
+Based on CV I would pick cost = 0.1
+
+## Task 4
+```{r}
+svm.pred <- predict(CV_tuning$best.model, test)
+svm.pred
+```
+
+
+## Task 5
+```{r}
+svm.nonlin <- svm(y~., train, kernal = "polynomial", cost = 0.1, gamma= 0.001)
+svm.nonlin2 <- svm(y~., train, kernal = "polynomial", cost = 0.1, gamma= 2)
+```
+
+## Task 6
+```{r}
+CV_tuning2 <- tune(svm, y~., data = train, 
+              ranges  = list(cost = c(0.001 , 0.01, 0.1, 1,5,10,100), gamma= c(0.001,0.5,1,2,3))
+             )
+```
+```{r}
+summary(CV_tuning2)
+plot(CV_tuning2)
+```
+
+
+## Task 7
+
+It is not absolutely required however it is reccomended as it will greatly speed up computation time. 

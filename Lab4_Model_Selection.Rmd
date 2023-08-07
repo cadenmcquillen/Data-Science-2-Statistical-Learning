@@ -1,0 +1,170 @@
+---
+title: "Lab4_Model_Selection"
+author: "Caden McQuillen"
+date: '2023-06-08'
+output: html_document
+---
+
+
+## Task 1
+```{r}
+library(ISLR)
+hitters_data <- Hitters
+
+## remove NAs
+hitters_data <- na.omit(hitters_data)
+```
+
+## Task 2
+```{r}
+library(leaps)
+best_subset <- regsubsets(Salary ~ ., hitters_data, nvmax = ncol(hitters_data))
+summary(best_subset)
+```
+
+For each model size 1-19, the columns with "*" are variables that are included in the model. For each model size, the best model is chosen so the varibles included contribute to the best model. The nvmax parameters is the max size of the subsets to include. 
+
+
+## Task 3
+```{r}
+best_subset <- regsubsets(Salary ~ ., hitters_data, nvmax = ncol(hitters_data))
+best_sub_summary <- summary(best_subset)
+
+
+plot(best_sub_summary$cp, col=ifelse(best_sub_summary$cp == min(best_sub_summary$cp), "red", "black"))
+plot(best_sub_summary$rsq, col=ifelse(best_sub_summary$rsq == max(best_sub_summary$rsq), "red", "black"))
+
+
+```
+## Task 4
+```{r}
+plot(best_subset, scale = "Cp")
+plot(best_subset, scale = "r2")
+plot(best_subset, scale = "bic")
+```
+
+BIC and Cp are measuring in sample error and R squared is measure MSE. 
+
+## Task 5
+
+```{r}
+forward_selection <- regsubsets(Salary ~ ., hitters_data, method = "forward")
+backward_selection <- regsubsets(Salary ~ ., hitters_data, method = "backward")
+
+forward_selection_summary <-summary(forward_selection)
+backward_selection_summary <-summary(backward_selection)
+forward_selection_summary
+backward_selection_summary
+```
+There are no differences with nvmax = 8 but there might be for the full 19. 
+
+## Task 6
+```{r}
+coef(best_subset, id = 7)
+coef(forward_selection, id = 7)
+coef(backward_selection, id = 7)
+```
+
+## Task 7 
+```{r}
+smp_size <- floor(0.70 * nrow(hitters_data))
+set.seed(123)
+train_ind <- sample(seq_len(nrow(hitters_data)), size = smp_size)
+
+
+train <- hitters_data[train_ind, ]
+#Y_train <- train[,86]
+#rain <- train[,-86]
+test <- hitters_data[-train_ind, ]
+#Y_test <- test[,86]
+#test <- test[,-86]
+
+train_best_subset <- regsubsets(Salary ~ ., train, nvmax = ncol(train))
+```
+
+## Task 8 
+```{r}
+predict.regsubset <- function(model, test, numPredictors){
+  coefs <- coef(model, id = numPredictors)
+  Ys <- vector(length = nrow(test))
+  test_data <- model.matrix(Salary ~. , test)
+  test_data <- test_data[,colnames(test_data) %in% names(coefs)]
+
+  for (i in 1:nrow(test)){
+    X <- test_data[i,]
+    Y <- X %*% coefs
+    Ys[i] <- Y
+  }
+ return(Ys)
+}
+
+predict.regsubset(train_best_subset, test, numPredictors = 7)
+```
+
+## Task 9 
+```{r}
+MSE_vector <- vector(length = ncol(test)-1)
+for ( i in 1:(ncol(test)-1)){
+  predicted.sal <- predict.regsubset(train_best_subset, test, numPredictors = i)
+  real.sal <- test$Salary
+  MSE <- mean((predicted.sal - real.sal)^2)
+  MSE_vector[i] <- MSE
+}
+
+
+validation_set_numPredictors <- order(MSE_vector, decreasing =  FALSE)[1]
+cat("These are the predictors included in the best model: ", names(coef(train_best_subset, id = validation_set_numPredictors)))
+```
+
+## Task 10
+```{r}
+cat("These are the predictors included in the best model: ", names(coef(best_subset, id = validation_set_numPredictors)))
+```
+
+## Task 11
+```{r}
+k <- 10
+MSE_matrix <- matrix(nrow = k, ncol = 19)
+set.seed(3124)
+CVdata <- hitters_data
+#Randomly shuffle the data
+CVdata <- CVdata[sample(nrow(CVdata)),]
+#Create m equally size folds
+folds <- cut(seq(1,nrow(CVdata)),breaks=k,labels=FALSE)
+for(i in 1:k){
+  #Segement your data 
+  testIndexes <- which(folds == i, arr.ind=TRUE)
+  cv_tr <- CVdata[-testIndexes, ]
+  cv_tst <- CVdata[testIndexes, ]
+  cvtrain_best_subset <- regsubsets(Salary ~ ., cv_tr, nvmax = ncol(cv_tr))
+  for(j in 1:19){
+    MSE_vector <- vector(length = 19)
+    predicted.sal <- predict.regsubset(cvtrain_best_subset, cv_tst, numPredictors = j)
+    real.sal <- cv_tst$Salary
+    MSE <- mean((predicted.sal - real.sal)^2)
+    MSE_matrix[i,j] <- MSE
+  }
+    
+}
+
+rownames(MSE_matrix) <- paste0("Fold_", seq(1,10,1))
+colnames(MSE_matrix) <- paste0("Predictors_", seq(1,19,1))
+
+MSE_matrix
+```
+
+## Task 12
+```{r}
+plot(colMeans(MSE_matrix))
+order(colMeans(MSE_matrix), decreasing = FALSE)[1]
+```
+The model with 11 predictors has the best mean cv error. 
+
+
+## Task 13
+```{r}
+cv_fulldata_best_subset <- regsubsets(Salary ~ .,hitters_data, nvmax = 19)
+
+coef(cv_fulldata_best_subset, id = 11)
+```
+

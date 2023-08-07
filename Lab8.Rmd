@@ -1,0 +1,93 @@
+---
+title: "Lab 8"
+author: "Caden McQuillen"
+date: '2023-07-06'
+output: html_document
+---
+
+## Libraries
+```{r}
+library(tree)
+library(gbm)
+library(randomForest)
+library(fastAdaboost)
+```
+
+
+## Task 1
+```{r}
+set.seed(1234)
+heart_data <- read.csv("/Users/Caden/Downloads/Heart.csv", row.names = 1)
+heart_data$AHD <- as.factor(heart_data$AHD)
+heart_data$ChestPain <- as.factor(heart_data$ChestPain)
+heart_data$Thal <- as.factor(heart_data$Thal)
+heart_data$ChestPain <- as.factor(heart_data$ChestPain)
+heart_data_impute <- rfImpute(AHD~., heart_data)
+RF <- randomForest(AHD ~ ., data=heart_data_impute)
+
+
+```
+
+## Task 2
+```{r}
+set.seed(24543)
+
+train_indice <- sample(c(TRUE,FALSE),nrow(heart_data_impute),rep=TRUE)
+train <- heart_data_impute[train_indice,]
+test <- heart_data_impute[!train_indice,]
+
+
+RF_train <- randomForest(AHD ~ ., data=train)
+importance(RF_train)
+varImpPlot(RF_train)
+
+Bag_train <- randomForest(AHD ~ ., data=train, mtry=ncol(train)-1)
+importance(Bag_train)
+varImpPlot(Bag_train)
+```
+
+## Task 3
+```{r}
+heart_data_impute$AHD <- ifelse(heart_data$AHD=="Yes", 1, 0)
+set.seed(24543)
+
+train_indice <- sample(c(TRUE,FALSE),nrow(heart_data_impute),rep=TRUE)
+train <- heart_data_impute[train_indice,]
+test <- heart_data_impute[!train_indice,]
+
+boost <- gbm(AHD ~ ., data=heart_data_impute, n.trees = 500, shrinkage=0.01, interaction.depth =1)
+
+```
+
+## Task 4 
+```{r}
+
+boost5000 <- gbm(AHD ~ ., data=heart_data_impute, n.trees = 5000, shrinkage=0.01, interaction.depth =1)
+gbm.perf(boost5000)
+
+```
+## Task 5
+```{r}
+boost_train <- gbm(AHD ~ ., data=train, n.trees = 388, shrinkage=0.01, interaction.depth =1, train.fraction = 1)
+boost.pred <- predict(boost_train, test)
+boost.pred<- ifelse(boost.pred > 0.5 , 1, 0)
+mean(boost.pred!=test$AHD)
+```
+
+## Task 6
+```{r}
+boost20000 <- gbm(AHD ~ ., data=heart_data_impute, n.trees = 20000, shrinkage=0.0001, interaction.depth =1)
+gbm.perf(boost20000)
+boost_train <- gbm(AHD ~ ., data=train, n.trees = 20000, shrinkage=0.0001, interaction.depth =1, train.fraction = 1)
+boost.pred <- predict(boost_train, test)
+boost.pred<- ifelse(boost.pred > 0.5 , 1, 0)
+mean(boost.pred!=test$AHD)
+```
+## Task 7
+```{r, output=FALSE, message=FALSE}
+adaboost_train <- adaboost(AHD ~ ., data=train, nIter  = 20000, shrinkage=0.0001)
+adaboost.pred <- predict(boost_train, test)
+adaboost.pred <- ifelse(adaboost.pred > 0.5 , 1, 0)
+mean(adaboost.pred!=test$AHD)
+```
+

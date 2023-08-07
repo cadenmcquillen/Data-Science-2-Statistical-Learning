@@ -1,0 +1,99 @@
+---
+title: "Lab2"
+author: "Caden McQuillen"
+date: '2023-05-16'
+output: html_document
+---
+
+## Task 1
+```{r}
+library(ISLR)
+data <-Caravan
+
+smp_size <- floor(0.70 * nrow(data))
+
+set.seed(123)
+train_ind <- sample(seq_len(nrow(data)), size = smp_size)
+
+
+train <- data[train_ind, ]
+Y_train <- train[,86]
+train <- train[,-86]
+test <- data[-train_ind, ]
+Y_test <- test[,86]
+test <- test[,-86]
+```
+
+
+## Task 2
+```{r}
+library(class)
+
+
+lowest_mismatch <- 0
+bestk <- 1
+for( k in 1:30){
+  knn_prediction <- knn(train, test, Y_train , k = k)
+  currentMismatchs <- 0
+  
+  for(j in 1:length(Y_test)){
+    if(knn_prediction[j]!= Y_test[j]){
+      currentMismatchs <- currentMismatchs +1
+    }
+  }
+  
+  if(k == 1){
+    lowest_mismatch <- currentMismatchs
+  }else{
+    if(currentMismatchs < lowest_mismatch){
+      lowest_mismatch <- currentMismatchs
+      bestk <- k
+    }
+  }
+}
+
+cat("The best k:", bestk)
+```
+
+
+## Task 3
+```{r}
+train <- data[train_ind, ]
+test <- data[-train_ind, ]
+fit <- glm(Purchase ~ ., data = train, family = "binomial")
+logistic <- predict(fit, newdata = test, type = "response")
+purchase <- ifelse(logistic < 0.5, "No", "Yes")
+currentMismatchs <- 0
+for(j in 1:length(Y_test)){
+    if(purchase[j]!= Y_test[j]){
+      currentMismatchs <- currentMismatchs +1
+    }
+}
+cat("Logistic regression mismatches:", currentMismatchs)
+```
+
+## Task 4
+```{r}
+
+library(MASS)
+
+lda <- lda(Purchase~., train)
+p1 <- predict(lda, train)$class
+tab <- table(Predicted = p1, Actual = Y_train)
+tab
+lda_train_misrate <- 1 - sum(diag(tab))/sum(tab)
+
+
+p2 <- predict(lda, test)$class
+tab1 <- table(Predicted = p2, Actual = Y_test)
+tab1
+lda_test_misrate <- 1 - sum(diag(tab1))/sum(tab1)
+```
+
+## Task 5
+```{r}
+cat("KNN error rate:", lowest_mismatch/length(Y_test), "\n")
+cat("Logistic regression error rate:", currentMismatchs/length(Y_test), "\n")
+cat("LDA error rate:", lda_test_misrate)
+```
+The best method was KNN with K = 22 but all the methods were pretty close.

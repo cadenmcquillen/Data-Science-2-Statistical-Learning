@@ -1,0 +1,145 @@
+---
+title: "Lab 10"
+author: "Caden McQuillen"
+date: '2023-07-20'
+output: html_document
+---
+
+## Simulate data
+```{r}
+sigmoid <- function(x){1/ (1 + exp(-x))}
+radial <- function(t){sqrt(1/2*pi) * exp(-1/2 * t ^2)}
+row_col_normal <- function(row, col){
+  matrix(rnorm(row*col), nrow = row, ncol = col)
+}
+
+```
+
+```{r}
+library(tidyverse)
+n_sim_2 <- 1000
+
+#for the first
+a1 <- c(3,3) 
+a2 <- c(3,-3)
+var_1 <- row_col_normal(n_sim_2, 2) %>%
+  {sigmoid(.%*% t(t(a1))) + sigmoid(.%*% t(t(a2)))} %>%
+  {var(.)/4}
+
+#for the second
+var_2 <- row_col_normal(n_sim_2, 10) %>%
+  apply(2, radial) %>%
+  {as.list(as.data.frame(.))} %>%
+  Reduce('*', .) %>%
+  {var(.)/4}
+```
+
+```{r}
+model1_sim <- function(n){
+  x <- row_col_normal(n, 2)
+  y <- x %>%
+  {sigmoid(.%*% t(t(a1))) + sigmoid(.%*% t(t(a2)))} %>%
+   { . + rnorm(n, sd = sqrt(var_1))}
+  as.data.frame(x) %>%
+    mutate(outcome = y)
+}
+
+model2_sim <- function(n){
+  x <- row_col_normal(n, 10)
+  y <- x %>%
+  apply(2, radial) %>%
+  {as.list(as.data.frame(.))} %>%
+  Reduce('*', .) %>%
+  { . + rnorm(n, sd = sqrt(var_2))}
+  as.data.frame(x) %>%
+    mutate(outcome = y)
+}
+
+set.seed(123)
+training_model1 <- model1_sim(100)
+training_model2 <- model2_sim(100)
+test_model1 <- model1_sim(1000)
+test_model2 <- model2_sim(1000)
+```
+
+
+## Task 1
+```{r}
+library(neuralnet)
+```
+
+## Task 2
+```{r}
+nn.1 <- neuralnet(formula = outcome ~., data = training_model2, hidden = 5, act.fct = "logistic")
+summary(nn.1)
+```
+
+## Task 3
+```{r}
+plot(nn.1)
+```
+
+## Task 4
+```{r}
+mse_df <- as.data.frame(matrix(nrow = 10, ncol = 3))
+colnames(mse_df) <- c("hidden units", "model1 error", "model2 error")
+
+for (i in 1:10){
+  
+  currentmodel1 <- neuralnet(formula = outcome ~., data = training_model1, hidden = i, act.fct = "logistic")
+  current.pred1 <- predict(currentmodel1, training_model1)
+  mse1 <- mean((training_model1$outcome - current.pred1)^2)
+  currentmodel2 <- neuralnet(formula = outcome ~., data = training_model2, hidden = i, act.fct = "logistic")
+  current.pred2 <- predict(currentmodel2, training_model2)
+  mse2 <- mean((training_model2$outcome - current.pred2)^2)
+  mse_df[i,1] <- i
+  mse_df[i,2] <- mse1
+  mse_df[i,3] <- mse2
+  
+}
+mse_df
+df1 <- data.frame(mse_df$`hidden units`, mse_df$`model1 error`, rep("model1", 10))
+colnames(df1) <- c("hidden units", "error", "model")
+df2 <- data.frame(mse_df$`hidden units`, mse_df$`model2 error`, rep("model2", 10))
+colnames(df2) <- c("hidden units", "error", "model")
+plot_df <- rbind(df1, df2)
+```
+## Task 5
+```{r}
+ggplot(plot_df, aes(x = `hidden units`, y = `error`, color = `model`)) +
+  geom_point()
+```
+
+## Task 6
+Since this is training data, as you add more hidden units your error keeps decreassing. However we know this means that we are overfitting. 
+
+
+## Task 7
+```{r}
+mse_df <- as.data.frame(matrix(nrow = 10, ncol = 3))
+colnames(mse_df) <- c("hidden units", "model1 error", "model2 error")
+
+for (i in 1:10){
+  
+  currentmodel1 <- neuralnet(formula = outcome ~., data = training_model1, hidden = i, act.fct = "logistic")
+  current.pred1 <- predict(currentmodel1, test_model1)
+  mse1 <- mean((test_model1$outcome - current.pred1)^2)
+  currentmodel2 <- neuralnet(formula = outcome ~., data = training_model2, hidden = i, act.fct = "logistic")
+  current.pred2 <- predict(currentmodel2, test_model2)
+  mse2 <- mean((test_model2$outcome - current.pred2)^2)
+  mse_df[i,1] <- i
+  mse_df[i,2] <- mse1
+  mse_df[i,3] <- mse2
+  
+}
+mse_df
+df1 <- data.frame(mse_df$`hidden units`, mse_df$`model1 error`, rep("model1", 10))
+colnames(df1) <- c("hidden units", "error", "model")
+df2 <- data.frame(mse_df$`hidden units`, mse_df$`model2 error`, rep("model2", 10))
+colnames(df2) <- c("hidden units", "error", "model")
+plot_df <- rbind(df1, df2)
+
+ggplot(plot_df, aes(x = `hidden units`, y = `error`, color = `model`)) +
+  geom_point()
+```
+We can see that the data with fewer features has lower error. We can also see that there is an optimal number of hidden units. 

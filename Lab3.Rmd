@@ -1,0 +1,378 @@
+---
+title: "Lab 3"
+author: "Caden McQuillen"
+date: '2023-05-30'
+output: html_document
+---
+
+## Scenario 1
+
+### Task 1
+```{r}
+
+generate_train <- function(numObs) {
+  X_1 <- rnorm(n=numObs, mean=runif(1, -1,1))
+  X_2 <- rnorm(n=numObs, mean=runif(1, -1,1))
+  Y_1 <- rnorm(n=numObs, mean=runif(1, -1,1))
+  Y_2<- rnorm(n=numObs, mean=runif(1, -1,1))
+  
+  df <- data.frame(c(X_1, X_2), c(Y_1, Y_2), c(rep("A", numObs), rep("B", numObs)))
+  colnames(df) <- c("p1", "p2", "Class")
+  df <- df[sample(1:nrow(df)),]
+  
+  return(df)
+}
+
+
+train <- generate_train(50)
+train
+
+train_Y <- train$Class
+train_for_knn <- train[,-3]
+```
+
+## Task 2
+```{r}
+library(ggplot2)
+test <- generate_train(500)
+ggplot(test, aes(p1, p2))+ geom_point(aes(colour = factor(Class)))
+
+test_Y <- test$Class
+test_for_knn <- test[,-3]
+```
+## Task 3
+
+
+```{r}
+
+KNN <- function(training_data, train_Y, test_data, test_Y,K){
+  library(class)
+  set.seed(54321)
+  train <- scale(training_data)
+  test <- scale(test_data)
+  train_class <- train_Y
+  test_class <- test_Y
+  
+  predicted_class <- knn(train, test, train_class, k=K)
+  return(mean(test_class != predicted_class))
+  
+}
+
+
+
+
+KNN(train_for_knn, train_Y, test_for_knn, test_Y, 5)
+
+
+```
+
+
+## Task 4
+
+```{r}
+KNN2 <- function(train, train_Y, test, test_Y){
+  library(class)
+  set.seed(54321)
+  train <- scale(train)
+  test <- scale(test)
+  error_df <- matrix(nrow = 5, ncol = 10) # five folds, k 1-10
+  colnames(error_df) <- seq(1:10)
+
+  
+  #Randomly shuffle the data
+  shufflerows <- sample(nrow(train))
+  train <-train[shufflerows,]
+  train_Y <- train_Y[shufflerows]
+
+  #Create 10 equally size folds
+  folds <- cut(seq(1,nrow(train)),breaks=5,labels=FALSE)
+
+  
+  
+  #Loop through folds
+  for(i in 1:5){
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    temp_train_data <- train[-testIndexes, ]
+    temp_train_Y <- train_Y[-testIndexes]
+    temp_test_data <- train[testIndexes, ]
+    temp_test_Y <- train_Y[testIndexes]
+  
+    #Loop through Ks
+    for(j in 1:10){
+      predicted_class=knn(temp_train_data, temp_test_data, temp_train_Y, k=j)
+      error_df[i,j]=mean(temp_test_Y != predicted_class)
+    }
+    
+   
+    
+   
+  }
+  #get best k
+  error_df <- sort(colMeans(error_df), decreasing = FALSE)
+  best_k <- names(error_df)[1]
+  
+  #rerun with best k
+  predicted_class=knn(train, test, train_Y, k=as.numeric(best_k))
+  return(mean(test_Y != predicted_class))
+}
+
+
+KNN2(train_for_knn, train_Y,test_for_knn, test_Y)
+
+```
+
+## Task 5
+
+```{r}
+lda_kfold <- function(train, test){
+  library('MASS')
+  set.seed(54321)
+  error_df <- vector(length = 5) # five folds
+
+  
+  #Randomly shuffle the data
+  shufflerows <- sample(nrow(train))
+  train <-train[shufflerows,]
+
+  #Create 10 equally size folds
+  folds <- cut(seq(1,nrow(train)),breaks=5,labels=FALSE)
+
+  
+  
+  #Loop through folds
+  for(i in 1:5){
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    temp_train <- train[-testIndexes, ]
+    lda.train <- lda(Class~., data=temp_train)
+    
+    test_pred_lda_class = predict(lda.train, test)$class
+    error_df[i]=mean(test$Class != test_pred_lda_class)
+
+  }
+  
+  return(mean(error_df))
+}
+new_train <- generate_train(50)
+lda_kfold(new_train, test)
+
+```
+
+```{r}
+qda_kfold <- function(train, test){
+  library('MASS')
+  set.seed(54321)
+  error_df <- vector(length = 5) # five folds
+
+  
+  #Randomly shuffle the data
+  shufflerows <- sample(nrow(train))
+  train <-train[shufflerows,]
+
+  #Create 10 equally size folds
+  folds <- cut(seq(1,nrow(train)),breaks=5,labels=FALSE)
+
+  
+  
+  #Loop through folds
+  for(i in 1:5){
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    temp_train <- train[-testIndexes, ]
+  
+    qda.train <- qda(Class~ ., data=temp_train)
+    test_pred_qda_class = predict(qda.train, test)$class
+    error_df[i]=mean(test$Class != test_pred_qda_class)
+  }
+  
+  return(mean(error_df))
+}
+
+qda_kfold(new_train, test)
+```
+
+```{r}
+logistic_kfold <- function(train, test){
+
+  set.seed(54321)
+  error_df <- vector(length = 5) # five folds
+  
+  train$Class <- as.factor(train$Class)
+  
+  #Randomly shuffle the data
+  shufflerows <- sample(nrow(train))
+  train <-train[shufflerows,]
+
+  #Create 10 equally size folds
+  folds <- cut(seq(1,nrow(train)),breaks=5,labels=FALSE)
+
+  
+  
+  #Loop through folds
+  for(i in 1:5){
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    temp_train <- train[-testIndexes, ]
+  
+    summary(logistic.train <- glm(Class ~ ., data=temp_train, family="binomial"))
+
+
+    ##Predict whether each individual will purchase caravan insurance in the test data. 
+    test_pred_logistic_class <- predict(logistic.train, test, type="response")
+    test_pred_logistic_class <- ifelse(test_pred_logistic_class >0.5, "B", "A") #no yes
+    
+
+    error_df[i]=mean(test$Class != test_pred_logistic_class)
+  }
+  
+  return(mean(error_df))
+}
+
+logistic_kfold(new_train, test)
+
+```
+
+
+## Task 6
+```{r}
+
+set.seed(57836)
+error_plot_df <- matrix(nrow = 100, ncol = 5)
+colnames(error_plot_df) <- c("KNN-1", "KNN-CV", "LDA", "QDA", "Logistic")
+training_datasets <-lapply(rep(50, 100), generate_train)
+
+for(i in 1:100){
+  current_train <- training_datasets[[i]]
+  current_train_Y <- current_train$Class
+  current_train_knn <- current_train[,-3]
+
+
+  error_plot_df[i,1] <- KNN(current_train_knn, current_train_Y, test_for_knn, test_Y, 5)
+  error_plot_df[i,2] <- KNN2(current_train_knn, current_train_Y, test_for_knn, test_Y)
+  error_plot_df[i,3] <- lda_kfold(current_train, test)
+  error_plot_df[i,4] <- qda_kfold(current_train, test)
+  error_plot_df[i,5] <- logistic_kfold(current_train, test)
+  rm(current_train)
+  rm(current_train_knn)
+  rm(current_train_Y)
+  
+}
+
+error_vector <- as.vector(error_plot_df)
+error_name <- c(rep("KNN-1", 100),rep("KNN-CV", 100),rep("LDA", 100),rep("QDA", 100),rep("Logistic", 100) )
+plot_df <- data.frame(error_vector, error_name)
+colnames(plot_df)<- c("error", "method")
+ggplot(plot_df, aes(x=method, y=error, color=method)) +
+  geom_boxplot()
+
+```
+
+
+## Scenario 2
+### Task 1
+```{r}
+
+generate_train2 <- function(numObs) {
+  library(MASS)
+  sigma <- matrix(c(1,-0.5, -0.5,1),nrow = 2,ncol=2)
+  X <- mvrnorm(n=numObs, mu=c(runif(1, -1,1), runif(1, -1,1)), sigma)
+  Y <- mvrnorm(n=numObs, mu=c(runif(1, -1,1), runif(1, -1,1)), sigma)
+  
+  
+  df <- data.frame(c(X[,1], X[,2]), c(Y[,1], Y[,2]), c(rep("A", numObs), rep("B", numObs)))
+  colnames(df) <- c("p1", "p2", "Class")
+  df <- df[sample(1:nrow(df)),]
+  
+  return(df)
+}
+
+
+
+
+```
+
+
+## Task 2
+```{r}
+
+set.seed(57836990)
+error_plot_df <- matrix(nrow = 100, ncol = 5)
+colnames(error_plot_df) <- c("KNN-1", "KNN-CV", "LDA", "QDA", "Logistic")
+training_datasets <-lapply(rep(50, 100), generate_train2)
+
+for(i in 1:100){
+  current_train <- training_datasets[[i]]
+  current_train_Y <- current_train$Class
+  current_train_knn <- current_train[,-3]
+
+
+  error_plot_df[i,1] <- KNN(current_train_knn, current_train_Y, test_for_knn, test_Y, 5)
+  error_plot_df[i,2] <- KNN2(current_train_knn, current_train_Y, test_for_knn, test_Y)
+  error_plot_df[i,3] <- lda_kfold(current_train, test)
+  error_plot_df[i,4] <- qda_kfold(current_train, test)
+  error_plot_df[i,5] <- logistic_kfold(current_train, test)
+  rm(current_train)
+  rm(current_train_knn)
+  rm(current_train_Y)
+  
+}
+
+error_vector <- as.vector(error_plot_df)
+error_name <- c(rep("KNN-1", 100),rep("KNN-CV", 100),rep("LDA", 100),rep("QDA", 100),rep("Logistic", 100) )
+plot_df <- data.frame(error_vector, error_name)
+colnames(plot_df)<- c("error", "method")
+ggplot(plot_df, aes(x=method, y=error, color=method)) +
+  geom_boxplot()
+
+```
+## Scenario 3
+
+### Task 1
+```{r}
+
+generate_train3<- function(numObs) {
+  library(MASS)
+  X <- rt(numObs, 5)
+  Y <- rt(numObs, 5)
+  
+  
+  df <- data.frame(c(X), c(Y), c(rep("A", numObs), rep("B", numObs)))
+  colnames(df) <- c("p1", "p2", "Class")
+  df <- df[sample(1:nrow(df)),]
+  
+  return(df)
+}
+
+```
+
+
+## Task 2
+```{r}
+
+set.seed(57836990)
+error_plot_df <- matrix(nrow = 100, ncol = 5)
+colnames(error_plot_df) <- c("KNN-1", "KNN-CV", "LDA", "QDA", "Logistic")
+training_datasets <-lapply(rep(50, 100), generate_train3)
+
+for(i in 1:100){
+  current_train <- training_datasets[[i]]
+  current_train_Y <- current_train$Class
+  current_train_knn <- current_train[,-3]
+
+
+  error_plot_df[i,1] <- KNN(current_train_knn, current_train_Y, test_for_knn, test_Y, 5)
+  error_plot_df[i,2] <- KNN2(current_train_knn, current_train_Y, test_for_knn, test_Y)
+  error_plot_df[i,3] <- lda_kfold(current_train, test)
+  error_plot_df[i,4] <- qda_kfold(current_train, test)
+  error_plot_df[i,5] <- logistic_kfold(current_train, test)
+  rm(current_train)
+  rm(current_train_knn)
+  rm(current_train_Y)
+  
+}
+
+error_vector <- as.vector(error_plot_df)
+error_name <- c(rep("KNN-1", 100),rep("KNN-CV", 100),rep("LDA", 100),rep("QDA", 100),rep("Logistic", 100) )
+plot_df <- data.frame(error_vector, error_name)
+colnames(plot_df)<- c("error", "method")
+ggplot(plot_df, aes(x=method, y=error, color=method)) +
+  geom_boxplot()
+
+```

@@ -1,0 +1,420 @@
+---
+title: "Assignment 2"
+author: "Caden McQuillen"
+date: '2023-06-02'
+output: html_document
+---
+
+## Question 1
+
+### Load packages
+```{r, message=FALSE}
+library(class)
+library(tidyverse)
+library(MASS)
+library(ggplot2)
+```
+### Load data 
+```{r, warning=FALSE}
+#read in data and convert last column to factor 
+data <- read.csv("/Users/Caden/Downloads/breast-cancer-wisconsin.data", header = FALSE)
+data$V11 <- ifelse(data$V11 == 2, "benign", "malignant")
+data$V11 <- as.factor(data$V11)
+
+#store Ids and remove from df
+ids <- data$V1
+data <- data[,-1]
+#convert column 7 to numeric
+data$V7 <- as.numeric(data$V7)
+
+#since some columns of 7 have ?, then remove the rows with NAs
+na_rows <- is.na(data$V7)
+data <- data[!na_rows,]
+
+```
+I removed rows that contained a "?" and converted column 7 to numeric. I also converted column 11 to a factor with levels "benign" and "malifnant".
+
+
+### a)
+
+```{r}
+KNN.error <- function(Train, Test, k=1) {
+  Train.KNN <- scale(Train[, which(names(Train) !="V11")])
+  Test.KNN <- scale(Test[,which(names(Test) !="V11")])
+  Test.class <- Test$V11
+  Train.class <- Train$V11
+  
+  set.seed(1)
+  pred.class=knn(Train.KNN, Test.KNN, Train.class, k=k)
+  mean(Test.class != pred.class)
+}
+```
+
+
+```{r}
+##Create function for CV estimated test error
+CV.error <- function(Train, k=0, m, method){
+  
+  ##Define M as the number of folds
+  M <- m
+  ##Define number of obs in training data
+  n <- nrow(Train)
+  # seed
+  set.seed(3124)
+  
+  CVdata <- Train
+  #Randomly shuffle the data
+  CVdata <- CVdata[sample(nrow(CVdata)),]
+  #Create m equally size folds
+  folds <- cut(seq(1,nrow(CVdata)),breaks=M,labels=FALSE)
+  
+  # for each of the M folds
+  if(method == "KNN"){
+    
+      ##Define how many k you want to try
+     k_values=1:k
+     num_k=length(k_values)
+  
+     ##create data frame to store CV errors
+     cv_error_df <- matrix(0, nrow=num_k, ncol=M) %>%
+     as.data.frame(.) %>%
+     mutate(k=k_values)
+  
+     # make column names nice
+     colnames(cv_error_df) <- str_replace(colnames(cv_error_df), 'V', 'fold')
+  
+   
+    for(m in 1:M){
+    
+    #Segement your data 
+    testIndexes <- which(folds == m, arr.ind=TRUE)
+    cv_tr <- CVdata[-testIndexes, ]
+    cv_tst <- CVdata[testIndexes, ]
+    
+    # for each value of k
+    for(i in 1:num_k){
+      # fix k for this loop iteration
+      K <- k_values[i]
+      
+      # compute the test error on the validation set
+      errs <- KNN.error(cv_tr, cv_tst, K)
+      
+      # store values in the data frame
+      cv_error_df[i, paste0('fold',m)] <- errs
+    }
+  }
+  
+  cv_error_df <- as.data.frame(cv_error_df)
+
+  
+  # compute the mean cv error for each value of k
+  cv_mean_error <- cv_error_df[,which(names(cv_error_df) !="k")]
+  cv_mean_error <- rowMeans(cv_mean_error)
+  cv_mean_error
+  return(cv_mean_error)
+    
+  }else if (method == "LDA"){
+    
+    ##create vector to store CV errors
+    cv_error_vector <- vector(length=M)
+    #create list to hold models
+    model_list <- list()
+    
+    for(m in 1:M){
+    #Segement your data by fold
+    testIndexes <- which(folds == m, arr.ind=TRUE)
+    cv_tr <- CVdata[-testIndexes, ]
+    cv_tst <- CVdata[testIndexes, ]
+    
+    lda.out <- lda(V11 ~ ., data=cv_tr)
+    model_list[[m]] <- lda.out
+    pred.class = predict(lda.out, cv_tst)$class
+    cv_error_vector[m] <-  mean(cv_tst$V11 != pred.class)
+    
+    }
+    return(mean(cv_error_vector))
+    
+    
+  }else if (method == "QDA"){
+    
+    ##create vector to store CV errors
+    cv_error_vector <- vector(length=M)
+    #create list to hold models
+    model_list <- list()
+   
+    for(m in 1:M){
+    
+    #Segement your data by fold 
+    testIndexes <- which(folds == m, arr.ind=TRUE)
+    cv_tr <- CVdata[-testIndexes, ]
+    cv_tst <- CVdata[testIndexes, ]
+    
+    qda.out <- qda(V11 ~ ., data=cv_tr)
+    model_list[[m]] <- qda.out
+    pred.class = predict(qda.out, cv_tst)$class
+    cv_error_vector[m] <-  mean(cv_tst$V11 != pred.class)
+    
+    }
+    return(mean(cv_error_vector))
+    
+  }else if (method == "Logistic"){
+    
+    ##create vector to store CV errors
+    cv_error_vector <- vector(length=M)
+    #create list to hold models
+    model_list <- list()
+    
+    
+    for(m in 1:M){
+    
+    #Segement your data by fold
+    testIndexes <- which(folds == m, arr.ind=TRUE)
+    cv_tr <- CVdata[-testIndexes, ]
+    cv_tst <- CVdata[testIndexes, ]
+    
+    log.out <- glm(V11 ~ ., data=cv_tr, family="binomial")
+    model_list[[m]] <- log.out
+    pred.class <- predict(log.out, cv_tst, type="response")
+    pred.class <- ifelse(pred.class >0.5,  "malignant", "benign")
+    cv_error_vector[m] <- mean(cv_tst$V11 != pred.class)
+    
+    }
+    return(mean(cv_error_vector))
+    
+    
+  
+  }else{ ## input other than 4 desired methods
+    return(-1)
+  }
+    
+}
+```
+
+
+### KNN CV Expected test error
+```{r}
+error_vect <- CV.error(data,k=10, m=10, method = "KNN")
+K_vect <- seq(1:10)
+final_df <- data.frame(K_vect, error_vect)
+colnames(final_df) <- c("K", "Expected test error")
+final_df
+```
+### LDA CV Expected test error
+```{r}
+CV.error(data, m=10, method = "LDA")
+```
+
+### QDA CV Expected test error
+```{r}
+CV.error(data, m=10, method = "QDA")
+```
+
+### Logistic CV Expected test error
+```{r}
+CV.error(data, m=10, method = "Logistic")
+```
+
+
+
+I would use logistic regression since it had the lowest expected test error. There were some KNN with K=8,10 that had very close expect prediction error to logistic regression but you also have to go through the extra step of picking which K to use when doing KNN. Additionally, logistic regression gives us information on which predictors are important. For those reasons I would pick logistic regression.
+
+### b)
+
+#### **KNN**
+Pros: Non-parametric, good for non-linear boundary with very large n and small p, no assumptions are made about the shape of the decision boundary.
+
+Cons: No information on which predictors are important, bad for small n or p >> n (suffers from curse of dimensionality), need to tune parameters (ie pick which k to use). 
+
+For this dataset, we do not know which of the predictors is most important. This is something that would be useful to know especially for cancer patient outcomes. n > p so KNN accuracy is pretty good for this data set. A downside is we have to go through an extra step of picking which k to use. 
+
+
+#### **Logistic regression**
+Pros: Tells us which predictors are important (coefficients), not limited to normally distributed predictors, good for exactly 2 classes, good for linear boundary line, Good for large n. 
+
+Cons: Bad for non linear boundaries, bad for p >= n.
+
+In this dataset we have exactly two classes with decently large sample size. We also have predictors that are not nessciarly normally disrutbed. We see that for these reasons logistic regression performs the best. 
+
+#### **LDA**
+Pros: Provides low dimension representation of data, good for more than 2 classes, stable for small n and normally distributed predictors, good for linear boundary line. 
+
+Cons: Can't use binary/discrete predictors, bad for non-linear decision boundary, bad for large n and non-normally distributed predictors, assumption of a common covariance matrix across different classes. 
+
+This dataset does not have categorical predictors but the predictors aren't necessarily approximately normal. We see that logistic regression performs slightly better than LDA so this may be a reason why. 
+
+#### **QDA**
+Pros: Provides low dimension representation of data, good for more than 2 classes, due to inclusion of multiplicative terms it is good for interactions between predictors, does not assume common covariance matrix across different classes
+
+Cons: bad for large n and non-normally distributed predictors, bad for linear boundary line. 
+
+As was the case with LDA, the predictors are necessarily approximately normal which is an important assumption of QDA. We don't have an reason to a priori to assume interaction between predictors either. As a result, we see QDA has the worst expected prediction error, although it still in a reasonable range of the others. 
+
+### c)
+
+Cross validation is measuring the **expected** test error/prediction error. Test-Train split is measuring an the generalization error. Expected test/prediction error is preferred because it averages over different training data whereas generalization error is only measured on the test split and can be highly variable unless you have a huge independent test dataset. 
+
+## Question 2
+
+### a)
+
+```{r}
+generate_data <- function(numObs){
+  
+  df <- as.data.frame(matrix(ncol = 1001, nrow = numObs))
+  for(i in 1:1000){
+    predictor_values <- rnorm(numObs, mean = 0, sd=1)
+    df[,i] <- predictor_values
+  }
+  response_vector <- sample(c(0,1), size = numObs, replace = TRUE, prob = c(0.5, 0.5))
+  df[,1001] <- response_vector
+  return(df)
+}
+
+simdata <- generate_data(200)
+```
+
+
+### b)
+```{r}
+top_20 <-function(data, Y) {
+  
+  pvalues <- vector(length = ncol(data))
+  for(i in 1:ncol(data)){
+    current_predictor <- data[, i]
+    group1 <- current_predictor[which(Y == 0)]
+    group2 <- current_predictor[which(Y == 1)]
+    pvalues[i] <- t.test(group1, group2)$p.value
+  }
+  lowest_20 <- order(pvalues)[seq(1:20)]
+  return(colnames(data)[lowest_20])
+}
+
+bad_predictors <- top_20(simdata[,-1001], simdata[,1001])
+bad_predictors
+```
+These are the top 20 predictors with the lowest p values from t test between response groups. I choose to do a t test since the response variable is a binary categorical variable so I thought that it would be appropriate to just compare means between the two groups. 
+
+### c)
+
+```{r}
+CV_wrong <- function(predictors, data, m){
+  ##Define M as the number of folds
+  M <- m
+  ##Define number of obs in training data
+  n <- nrow(data)
+  # seed
+  set.seed(3124)
+  
+  ##create vector to store CV errors
+  cv_error_vector <- vector(length=M)
+  #create list to hold models
+  model_list <- list()
+    
+  
+  #name the 'Train' argument CVdata for clarity (data we're running cross validation on)
+  CVdata <- data
+    
+  #Randomly shuffle the data
+  CVdata <- CVdata[sample(nrow(CVdata)),]
+    
+  #Create 5 equally size folds
+  folds <- cut(seq(1,nrow(CVdata)),breaks=M,labels=FALSE)
+    
+  for(m in 1:M){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds == m, arr.ind=TRUE)
+    cv_tr <- CVdata[-testIndexes, ]
+    cv_tst <- CVdata[testIndexes, ]
+    
+    model_formula <- as.formula(paste0("V1001", " ~ ", paste(predictors, collapse = ' + ')))
+    lda.out <- lda(formula = model_formula, data=cv_tr)
+    model_list[[m]] <- lda.out
+    pred.class = predict(lda.out, cv_tst)$class
+    cv_error_vector[m] <-  mean(cv_tst$V1001 != pred.class)
+    
+  }
+    return(mean(cv_error_vector))
+
+}
+
+
+CV_wrong(bad_predictors, simdata, 10)
+```
+The estimated prediction error is 0.23 doing cross validation the wrong way. 
+
+### d)
+
+
+```{r}
+CV_right <- function(data, m){
+  
+  ##Define M as the number of folds
+  M <- m
+  ##Define number of obs in training data
+  n <- nrow(data)
+  # seed
+  set.seed(3124)
+  
+  ##create vector to store CV errors
+  cv_error_vector <- vector(length=M)
+  #create list to hold models
+  model_list <- list()
+  
+  #name the 'Train' argument CVdata for clarity (data we're running cross validation on)
+  CVdata <- data
+    
+  #Randomly shuffle the data
+  CVdata <- CVdata[sample(nrow(CVdata)),]
+    
+  #Create 5 equally size folds
+  folds <- cut(seq(1,nrow(CVdata)),breaks=M,labels=FALSE)
+    
+  for(m in 1:M){
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds == m, arr.ind=TRUE)
+    cv_tr <- CVdata[-testIndexes, ]
+    cv_tst <- CVdata[testIndexes, ]
+    predictors <- top_20(cv_tr[,-1001], cv_tr[,1001])
+    model_formula <- as.formula(paste0("V1001", " ~ ", paste(predictors, collapse = ' + ')))
+    lda.out <- lda(formula = model_formula, data=cv_tr)
+    model_list[[m]] <- lda.out
+    pred.class = predict(lda.out, cv_tst)$class
+    cv_error_vector[m] <-  mean(cv_tst$V1001 != pred.class)
+    
+  }
+    return(mean(cv_error_vector))
+
+  
+  
+}
+
+
+CV_right(simdata, 10)
+```
+The estimated prediction error is 0.465 doing cross validation the right way. 
+
+### e)
+
+```{r}
+
+error_df <- as.data.frame(matrix(ncol = 2, nrow = 100))
+colnames(error_df) <- c("CV_right", "CV_wrong")
+datasets <-lapply(rep(200, 100), generate_data)
+for (i in 1:100){
+  currentdata <- datasets[[i]]
+  error_df[i,1] <- CV_right(currentdata, 10)
+  bad_predictors <- top_20(currentdata[,-1001], currentdata[,1001])
+  error_df[i,2] <- CV_wrong(bad_predictors, currentdata, 10)
+
+  
+}
+
+```
+
+```{r}
+plot_df <- data.frame(c(error_df$CV_right, error_df$CV_wrong), c(rep("CV_right", 100), rep("CV_wrong", 100)))
+colnames(plot_df) <- c("error", "method")
+ggplot(plot_df, aes(x=method, y=error, color=method)) +
+  geom_boxplot()
+```
+

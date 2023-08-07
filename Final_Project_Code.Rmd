@@ -1,0 +1,220 @@
+---
+title: "Final_Project"
+author: "Caden McQuillen"
+date: '2023-07-30'
+output: html_document
+---
+
+## Libraries
+```{r}
+library(moments)
+library(tree)
+library(randomForest)
+library(gbm)
+library(e1071)
+library(tidyverse)
+library(dplyr)
+library(bestglm)
+library(MASS)
+library(leaps)
+library(glmnet)
+library(gam)
+```
+
+
+## Load data 
+```{r}
+baseline <- read.csv("/Users/Caden/Downloads/baselines.csv")
+labs <- read.csv("/Users/Caden/Downloads/lab_and_vitals.csv")
+```
+
+## Clean labs data 
+```{r}
+labs <- na.omit(labs)
+measurement_names <- unique(labs$name)
+patient_ids <- unique(labs$subject)
+```
+
+## Create new features
+```{r}
+new_features <- as.data.frame(matrix(ncol = 4*length(measurement_names), nrow = length(patient_ids)))
+i <- 1
+j <- 1
+for(measurement in measurement_names){
+  colnames(new_features)[i] <- paste(measurement, "mean", sep = "_")
+  colnames(new_features)[i+1] <- paste(measurement, "sd", sep = "_")
+  colnames(new_features)[i+2] <- paste(measurement, "kurtosis", sep = "_")
+  colnames(new_features)[i+3] <- paste(measurement, "skew", sep = "_")
+  current_measurement <- subset(labs, name == measurement)
+  
+  for(id in patient_ids){
+    current_patient <- subset(current_measurement, subject == id)
+    new_features[j, i] <- mean(current_patient$value)
+    new_features[j, i+1] <- sd(current_patient$value)
+    new_features[j, i+2] <- kurtosis(current_patient$value)
+    new_features[j, i+3] <- skewness(current_patient$value)
+    j <- j + 1
+  }
+  j <- 1
+  i <- i + 4
+}
+new_features$mrn <- patient_ids
+```
+
+## Sort new features by high variance
+```{r}
+var_vect <- vector(length = ncol(new_features))
+names(var_vect) <- colnames(new_features)
+for(i in 1:ncol(new_features)){
+  var_vect[i] <- var(new_features[,i])
+}
+var_vect <- sort(var_vect)
+var_vect
+```
+
+## Merge with baseline data
+```{r}
+all_data <- merge(baseline, new_features, by.x = "mrn", by.y = "mrn")
+all_data$event<- as.factor(all_data$event)
+## remove mrn's
+all_data <- all_data[,-1] 
+
+
+all_data[sapply(all_data, is.character)] <- lapply(all_data[sapply(all_data, is.character)], 
+                                       as.factor)
+```
+
+## Train/Test
+```{r}
+set.seed(23453)
+train_indice <- sample(x= nrow(all_data),rep=FALSE, size = nrow(all_data)/2)
+train <- all_data[train_indice,]
+test <- all_data[-train_indice,]
+```
+
+## LASSO 
+```{r, warning=FALSE}
+set.seed(23453)
+glm_train <- train[,-which(colnames(train)=="event")]
+glm_train <- model.matrix( ~ .-1, glm_train)
+glm_train <- scale(glm_train)
+glm_trainy <- as.integer(as.factor(train$event))-1
+
+
+glm_test<- test[,-which(colnames(test)=="event")]
+glm_test<- model.matrix( ~ .-1, glm_test)
+glm_test <- scale(glm_test)
+glm_testy <- as.integer(as.factor(test$event))-1
+
+
+
+
+## Tune parameters using CV
+LASSO_lamda <- cv.glmnet(x=as.matrix(glm_train), y=glm_trainy, alpha=1, family= "binomial")
+
+## Get models on whole training data set using lambda determine from CV
+best_LASSO<- glmnet(x=as.matrix(glm_train), y=glm_trainy, alpha=1, lambda = LASSO_lamda$lambda.min, family= "binomial")
+LASSO.pred <- predict(best_LASSO, as.matrix(glm_test), s=LASSO_lamda$lambda.min, type = "response")
+LASSO.pred.class <- ifelse(LASSO.pred > 0.5, "Yes", "No")
+
+cat("LASSO model error: \n")
+LASSO.error <- mean(test$event != LASSO.pred.class)
+LASSO.error
+
+best_LASSO$beta
+
+```
+
+## LDA, QDA and linear SVM
+```{r}
+lda.model <- lda( event ~ ., data=train)
+lda.pred = predict(lda.model, test)$class
+cat("LDA classification error: \n")
+mean(test$event != lda.pred)
+
+qda.model <- qda( event ~ ., data=train)
+qda.pred = predict(qda.model, test)$class
+cat("QDA classification error: \n")
+mean(test$event != qda.pred)
+
+
+svm.model <- svm(event~., train, kernel= "linear", cost= 0.01, gamma=2)
+svm.pred <- predict(svm.model, test)
+cat("SVM classification error: \n")
+mean(test$event != svm.pred)
+```
+
+## SVM
+```{r}
+set.seed(23453)
+linear.tune.out=tune(svm,event~ ., data=train, kernel="linear", ranges =list(gamma=c(10^-1, 10^-2, 10^-3), cost=c(0.001 , 0.01, 0.1, 1,5,10,100) ) )
+```
+
+## Radial SVM
+```{r}
+set.seed(23453)
+radial.tune.out=tune(svm,event~ ., data=train, kernel="radial", ranges =list(gamma=c(10^-1, 10^-2, 10^-3), cost=c(0.001 , 0.01, 0.1, 1,5,10,100) ) )
+```
+
+```{r}
+summary(linear.tune.out)
+summary(radial.tune.out)
+```
+
+```{r}
+radial.pred=predict(radial.tune.out$best.model,test)
+cat("Radial SVM classification error: \n")
+mean(test$event != radial.pred)
+
+
+linear.pred=predict(linear.tune.out$best.model,test)
+cat("Linear SVM classification error: \n")
+mean(test$event != linear.pred)
+```
+
+## Create plots
+```{r}
+
+model <- c("LDA", "QDA", "Linear SVM", "Radial SVM", "LASSO")
+error <- c(mean(test$event != lda.pred), mean(test$event != qda.pred),mean(test$event != linear.pred), mean(test$event != radial.pred), LASSO.error )
+
+error_df <- data.frame(model, error)
+
+ggplot(error_df, aes(x=model, y=error, fill=model)) +
+  geom_bar(stat="identity")+theme_minimal() 
+
+
+
+betas <- as.vector(best_LASSO$beta)
+predictors <- row.names(best_LASSO$beta)
+LASSO_df <- data.frame(predictors, betas)
+beta_sorted <- LASSO_df$predictor[order(abs(LASSO_df$betas), decreasing = TRUE)]
+
+ggplot(LASSO_df, aes(x= factor(predictors, level = beta_sorted), y=betas)) +
+  geom_bar(stat="identity")+theme_minimal() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+LASSO_df2 <- LASSO_df[which(LASSO_df$betas !=0),]
+LASSO_df2$betas_exp <- exp(LASSO_df2$betas)
+
+beta_sorted2 <- LASSO_df2$predictor[order(abs(LASSO_df2$betas_exp), decreasing = TRUE)]
+
+ggplot(LASSO_df2, aes(x= factor(predictors, level = beta_sorted2), y=betas_exp)) +
+  geom_bar(stat="identity")+theme_minimal() + ylim(c(0,2))+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + labs(y = "Odds Ratio") + geom_hline(yintercept=1, linetype="dashed", color = "red")
+
+
+
+
+variance <- var_vect
+vitals <- names(var_vect)
+vitals_df <- data.frame(vitals, variance)
+vitals_df <- vitals_df[-21,]
+vars_sorted <- vitals_df$vitals[order(abs(vitals_df$variance), decreasing = TRUE)]
+
+ggplot(vitals_df, aes(x= factor(vitals, level = vars_sorted), y=variance)) +
+  geom_bar(stat="identity")+theme_minimal() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
+```
+
